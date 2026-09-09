@@ -1,0 +1,1 @@
+ALTER TABLE "classes" ADD COLUMN "roster_prefix" varchar(64);
