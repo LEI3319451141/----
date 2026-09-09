@@ -19,7 +19,17 @@ export async function requireRole(...roles: string[]): Promise<GuardResult> {
   return result;
 }
 
-/** 统一处理 Postgres 唯一约束冲突 */
+/** 统一处理 Postgres 唯一约束冲突（Neon serverless 驱动会把 PG 错误包在 cause 中） */
 export function isUniqueViolation(e: unknown): boolean {
-  return typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "23505";
+  let cur: unknown = e;
+  for (let i = 0; i < 5 && cur; i++) {
+    if (
+      typeof cur === "object" &&
+      (cur as { code?: string }).code === "23505"
+    ) {
+      return true;
+    }
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
 }

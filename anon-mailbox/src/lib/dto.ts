@@ -1,11 +1,12 @@
 import { fuzzyTime } from "./time";
-import { STAFF_ROLE_LABELS } from "./rbac";
 
 interface SuggestionSerializable {
   id: number;
   classId: number;
   visibility: string;
-  targetGroups: string[] | null;
+  targetTitleIds: number[] | null;
+  /** 目标职务名称（由 API 层根据职务字典解析后传入） */
+  targetTitleNames?: string[] | null;
   categoryId: number | null;
   categoryName: string | null;
   content: string;
@@ -16,17 +17,15 @@ interface SuggestionSerializable {
   className?: string | null;
 }
 
-/** 可见性展示文案（注意：person 定向建议只有被指定人本人能查到，故可直接显示"仅你可见"） */
+/** 可见性展示文案（person 定向建议只有被指定人本人能查到，故直接显示"仅你可见"） */
 export function audienceLabel(s: {
   visibility: string;
-  targetGroups?: string[] | null;
+  targetTitleNames?: string[] | null;
 }): string {
   if (s.visibility === "public") return "公开";
   if (s.visibility === "person") return "仅你可见";
-  const names = (s.targetGroups ?? [])
-    .map((r) => STAFF_ROLE_LABELS[r] ?? r)
-    .join("、");
-  return names ? `致：${names}` : "群体可见";
+  const names = (s.targetTitleNames ?? []).filter(Boolean);
+  return names.length ? `致：${names.join("、")}` : "群体可见";
 }
 
 /**
@@ -35,13 +34,18 @@ export function audienceLabel(s: {
  * 从根本上杜绝提交者身份与指定对象信息泄露。
  */
 export function suggestionToDto(s: SuggestionSerializable) {
+  const titleNames = s.visibility === "group" ? (s.targetTitleNames ?? []) : [];
   return {
     id: s.id,
     classId: s.classId,
     className: s.className ?? null,
     visibility: s.visibility,
-    targetGroups: s.visibility === "group" ? s.targetGroups ?? [] : [],
-    audienceLabel: audienceLabel(s),
+    targetTitleIds: s.visibility === "group" ? s.targetTitleIds ?? [] : [],
+    targetTitleNames: titleNames,
+    audienceLabel: audienceLabel({
+      visibility: s.visibility,
+      targetTitleNames: titleNames,
+    }),
     categoryId: s.categoryId,
     categoryName: s.categoryName,
     content: s.content,

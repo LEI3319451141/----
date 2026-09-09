@@ -15,16 +15,17 @@ type Visibility = "public" | "group" | "person";
 
 interface Meta {
   myClass: { id: number; name: string };
-  groupOptions: { value: string; label: string }[];
+  groupOptions: { id: number; name: string; category?: string }[];
   categories: { id: number; name: string }[];
 }
 
 interface StaffMember {
   id: number;
   name: string;
-  role: string;
-  roleLabel: string;
-  title: string | null;
+  titleId: number;
+  titleName: string;
+  category: string;
+  categoryLabel: string;
 }
 
 interface MySuggestion {
@@ -45,7 +46,7 @@ export default function SubmitPage() {
   const [loadError, setLoadError] = useState("");
 
   const [visibility, setVisibility] = useState<Visibility>("public");
-  const [targetGroups, setTargetGroups] = useState<string[]>([]);
+  const [targetTitleIds, setTargetTitleIds] = useState<number[]>([]);
   const [targetUserId, setTargetUserId] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [content, setContent] = useState("");
@@ -95,11 +96,9 @@ export default function SubmitPage() {
     })();
   }, [router, loadHistory]);
 
-  function toggleGroup(value: string) {
-    setTargetGroups((prev) =>
-      prev.includes(value)
-        ? prev.filter((g) => g !== value)
-        : [...prev, value]
+  function toggleTitle(id: number) {
+    setTargetTitleIds((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
     );
   }
 
@@ -110,8 +109,8 @@ export default function SubmitPage() {
       setError("建议内容至少 5 个字");
       return;
     }
-    if (visibility === "group" && targetGroups.length === 0) {
-      setError("请至少勾选一个可见群体");
+    if (visibility === "group" && targetTitleIds.length === 0) {
+      setError("请至少勾选一个收信职务");
       return;
     }
     if (visibility === "person" && !targetUserId) {
@@ -126,7 +125,8 @@ export default function SubmitPage() {
           method: "POST",
           body: JSON.stringify({
             visibility,
-            targetGroups: visibility === "group" ? targetGroups : undefined,
+            targetTitleIds:
+              visibility === "group" ? targetTitleIds : undefined,
             targetUserId: visibility === "person" ? targetUserId : undefined,
             categoryId,
             content: content.trim(),
@@ -135,7 +135,7 @@ export default function SubmitPage() {
       );
       setSuccessLabel(res.anonymousLabel);
       setContent("");
-      setTargetGroups([]);
+      setTargetTitleIds([]);
       setTargetUserId(null);
       loadHistory();
     } catch (err) {
@@ -237,22 +237,28 @@ export default function SubmitPage() {
                       {(meta?.groupOptions ?? []).map((g) => (
                         <button
                           type="button"
-                          key={g.value}
-                          onClick={() => toggleGroup(g.value)}
+                          key={g.id}
+                          onClick={() => toggleTitle(g.id)}
                           className={`chip cursor-pointer transition-all ${
-                            targetGroups.includes(g.value)
+                            targetTitleIds.includes(g.id)
                               ? "chip-purple ring-2 ring-[var(--color-accent)]/40"
                               : "opacity-60 hover:opacity-100"
                           }`}
                         >
-                          {targetGroups.includes(g.value) ? "✓ " : ""}
-                          {g.label}
+                          {targetTitleIds.includes(g.id) ? "✓ " : ""}
+                          {g.name}
                         </button>
                       ))}
                     </div>
-                    <p className="text-xs text-[var(--color-ink-2)]">
-                      仅被勾选群体的成员能看到这条建议，其他同学与接收端均不可见，可多选。
-                    </p>
+                    {meta && meta.groupOptions.length === 0 ? (
+                      <p className="text-xs text-[var(--color-warning)]">
+                        本班暂时没有可收信的职务，请联系管理员设置。
+                      </p>
+                    ) : (
+                      <p className="text-xs text-[var(--color-ink-2)]">
+                        仅担任所选职务的人员能看到这条建议，其他同学与接收端均不可见，可多选。
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -270,7 +276,7 @@ export default function SubmitPage() {
                       <option value="">请选择一位接收人…</option>
                       {staff.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name}（{s.title ?? s.roleLabel}）
+                          {s.name}（{s.titleName}）
                         </option>
                       ))}
                     </select>

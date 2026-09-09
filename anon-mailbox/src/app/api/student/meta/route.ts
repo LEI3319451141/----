@@ -1,14 +1,18 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, and } from "drizzle-orm";
 import { db } from "@/db";
-import { classes, suggestionCategories } from "@/db/schema";
+import {
+  classAssignments,
+  classes,
+  staffTitles,
+  suggestionCategories,
+} from "@/db/schema";
 import { fail, ok } from "@/lib/api";
-import { TARGETABLE_STAFF_ROLES, getStudentClassId } from "@/lib/rbac";
-import { RECIPIENT_TYPE_LABELS } from "@/lib/labels";
+import { getStudentClassId } from "@/lib/rbac";
 import { requireUser } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
-/** 提交页所需数据：我的班级、可选群体、建议分类 */
+/** 提交页所需数据：我的班级、本班可选职务群体、建议分类 */
 export async function GET() {
   const guard = await requireUser();
   if ("response" in guard) return guard.response;
@@ -25,6 +29,33 @@ export async function GET() {
     .where(eq(classes.id, classId))
     .limit(1);
 
+  // 本班"群体可见"可选职务：本班有在任人员且职务处于启用状态
+  const titleRows = await db
+    .select({
+      id: staffTitles.id,
+      name: staffTitles.name,
+      category: staffTitles.category,
+    })
+    .from(classAssignments)
+    .innerJoin(staffTitles, eq(staffTitles.id, classAssignments.titleId))
+    .where(
+      and(
+        eq(classAssignments.classId, classId),
+        eq(staffTitles.isActive, true)
+      )
+    )
+    .orderBy(asc(staffTitles.sortOrder), staffTitles.id);
+
+  // 去重（同一职务可能多人在任）
+  const seen = new Set<number>();
+  const groupOptions = titleRows
+    .filter((t) => {
+      if (seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    })
+    .map((t) => ({ id: t.id, name: t.name, category: t.category }));
+
   const categories = await db
     .select({
       id: suggestionCategories.id,
@@ -37,10 +68,7 @@ export async function GET() {
 
   return ok({
     myClass: cls ?? { id: classId, name: "未知班级" },
-    groupOptions: TARGETABLE_STAFF_ROLES.map((v) => ({
-      value: v,
-      label: RECIPIENT_TYPE_LABELS[v],
-    })),
+    groupOptions,
     categories,
   });
 }

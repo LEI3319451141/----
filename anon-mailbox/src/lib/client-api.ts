@@ -35,8 +35,20 @@ export interface ManagedClass {
   className: string;
   grade: string | null;
   department: string | null;
-  staffRole: "counselor" | "teacher" | "cadre";
-  title: string | null;
+  titleId: number;
+  titleName: string;
+  category: "counselor" | "teacher" | "cadre";
+}
+
+/** 职务（staff_titles） */
+export interface StaffTitle {
+  id: number;
+  name: string;
+  category: "counselor" | "teacher" | "cadre";
+  categoryLabel: string;
+  isActive: boolean;
+  holderCount?: number;
+  sortOrder: number;
 }
 
 export interface MeResponse {

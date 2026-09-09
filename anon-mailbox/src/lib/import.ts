@@ -5,6 +5,7 @@ import {
   classAssignments,
   classes,
   importBatches,
+  staffTitles,
   studentEnrollments,
   users,
 } from "@/db/schema";
@@ -34,7 +35,7 @@ function cellText(v: unknown): string {
  * 解析学生名单 Excel/CSV。
  * - 班级有白名单前缀时：只需「姓名」列，账号 = 前缀 + 姓名，无需初始密码
  * - 班级无白名单前缀时：需「学号」+「姓名」列，账号 = 学号，初始密码 = 学号
- * 「职务」列可选。
+ * 「职务」列可选（职务名，如"学习委员"；系统中不存在时将自动创建为班委职务）。
  */
 function parseSheet(
   buffer: Buffer,
@@ -150,6 +151,41 @@ function parseSheet(
   return { students, errors };
 }
 
+/** 按职务名查找；不存在则创建为班委（cadre）职务。返回职务 ID 与类别 */
+async function resolveTitleId(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  name: string,
+  cache: Map<string, { id: number; category: string }>
+): Promise<{ id: number; category: string }> {
+  const cached = cache.get(name);
+  if (cached) return cached;
+
+  const [existing] = await tx
+    .select({
+      id: staffTitles.id,
+      category: staffTitles.category,
+      isActive: staffTitles.isActive,
+    })
+    .from(staffTitles)
+    .where(eq(staffTitles.name, name))
+    .limit(1);
+
+  if (existing) {
+    const result = { id: existing.id, category: existing.category };
+    cache.set(name, result);
+    return result;
+  }
+
+  const [created] = await tx
+    .insert(staffTitles)
+    .values({ name, category: "cadre", isActive: true })
+    .returning({ id: staffTitles.id, category: staffTitles.category });
+
+  const result = { id: created.id, category: created.category };
+  cache.set(name, result);
+  return result;
+}
+
 /**
  * 行级容错导入：单行失败不影响其他行，最终生成批次报告。
  */
@@ -172,10 +208,17 @@ export async function importStudents(opts: {
   const { students, errors: parseErrors } = parseSheet(buffer, rosterPrefix);
   const rowErrors: RowError[] = [...parseErrors];
   let successCount = 0;
+  const titleCache = new Map<string, { id: number; category: string }>();
 
   for (const s of students) {
     try {
       await db.transaction(async (tx) => {
+        // 职务先解析（可能自动创建班委职务）
+        let resolved: { id: number; category: string } | null = null;
+        if (s.title) {
+          resolved = await resolveTitleId(tx, s.title, titleCache);
+        }
+
         const [createdUser] = await tx
           .insert(users)
           .values({
@@ -183,7 +226,8 @@ export async function importStudents(opts: {
             // 有白名单前缀时密码为空串，表示"尚未设置密码"，学生首次登录时自行设置
             passwordHash: s.hasPassword ? await hashPassword(s.studentNo) : "",
             realName: s.realName,
-            role: s.title ? "cadre" : "student",
+            // 授予职务的用户按职务类别赋予系统角色（班委→cadre，辅导员→counselor 等）
+            role: resolved ? (resolved.category as "cadre" | "counselor" | "teacher") : "student",
             mustResetPassword: s.hasPassword, // 旧模式首登强制改密
           })
           .returning({ id: users.id });
@@ -194,12 +238,11 @@ export async function importStudents(opts: {
           studentNo: s.studentNo,
         });
 
-        if (s.title) {
+        if (resolved) {
           await tx.insert(classAssignments).values({
             classId,
             userId: createdUser.id,
-            staffRole: "cadre",
-            title: s.title,
+            titleId: resolved.id,
           });
         }
       });

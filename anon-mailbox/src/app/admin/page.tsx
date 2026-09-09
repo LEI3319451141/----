@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, fetchMe, type MeResponse } from "@/lib/client-api";
+import {
+  apiFetch,
+  fetchMe,
+  type MeResponse,
+  type StaffTitle,
+} from "@/lib/client-api";
 import { TopNav } from "@/components/TopNav";
 import { PasswordModal } from "@/components/PasswordModal";
 import { ROLE_LABELS } from "@/lib/labels";
@@ -26,8 +31,8 @@ interface StaffRow {
   assignments: {
     classId: number;
     className: string;
-    staffRole: string;
-    title: string | null;
+    titleId: number;
+    titleName: string;
   }[];
 }
 interface AssignmentRow {
@@ -35,17 +40,19 @@ interface AssignmentRow {
   userId: number;
   loginId: string;
   realName: string;
-  staffRole: string;
-  staffRoleLabel: string;
-  title: string | null;
+  titleId: number;
+  titleName: string;
+  category: string;
+  categoryLabel: string;
   status: string;
 }
 interface StudentRow {
   userId: number;
   studentNo: string;
   realName: string;
+  loginId: string;
   status: string;
-  cadreTitle: string | null;
+  titles: string[];
 }
 interface ImportRow {
   id: number;
@@ -74,12 +81,13 @@ export default function AdminPage() {
   const router = useRouter();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [needReset, setNeedReset] = useState(false);
-  const [tab, setTab] = useState<"classes" | "staff" | "categories">(
+  const [tab, setTab] = useState<"classes" | "staff" | "titles" | "categories">(
     "classes"
   );
 
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [staff, setStaff] = useState<StaffRow[]>([]);
+  const [titles, setTitles] = useState<StaffTitle[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
 
   const loadClasses = useCallback(
@@ -89,6 +97,11 @@ export default function AdminPage() {
   );
   const loadStaff = useCallback(
     () => apiFetch<StaffRow[]>("/api/admin/users").then((d) => setStaff(d)),
+    []
+  );
+  const loadTitles = useCallback(
+    () =>
+      apiFetch<StaffTitle[]>("/api/admin/titles").then((d) => setTitles(d)),
     []
   );
   const loadCategories = useCallback(
@@ -114,9 +127,10 @@ export default function AdminPage() {
       setNeedReset(data.user.mustResetPassword);
       loadClasses();
       loadStaff();
+      loadTitles();
       loadCategories();
     })();
-  }, [router, loadClasses, loadStaff, loadCategories]);
+  }, [router, loadClasses, loadStaff, loadTitles, loadCategories]);
 
   if (!me) {
     return (
@@ -140,7 +154,7 @@ export default function AdminPage() {
       <main className="max-w-5xl mx-auto px-5 py-10">
         <h1 className="text-2xl font-semibold tracking-tight mb-6">管理后台</h1>
 
-        <div className="segmented mb-6 max-w-md">
+        <div className="segmented mb-6 flex-wrap">
           <button
             type="button"
             className={tab === "classes" ? "active" : ""}
@@ -157,6 +171,13 @@ export default function AdminPage() {
           </button>
           <button
             type="button"
+            className={tab === "titles" ? "active" : ""}
+            onClick={() => setTab("titles")}
+          >
+            职务管理
+          </button>
+          <button
+            type="button"
             className={tab === "categories" ? "active" : ""}
             onClick={() => setTab("categories")}
           >
@@ -168,14 +189,17 @@ export default function AdminPage() {
           <ClassesTab
             classes={classes}
             staff={staff}
+            titles={titles}
             onChanged={() => {
               loadClasses();
               loadStaff();
+              loadTitles();
             }}
           />
         )}
-        {tab === "staff" && (
-          <StaffTab staff={staff} onChanged={loadStaff} />
+        {tab === "staff" && <StaffTab staff={staff} onChanged={loadStaff} />}
+        {tab === "titles" && (
+          <TitlesTab titles={titles} onChanged={loadTitles} />
         )}
         {tab === "categories" && (
           <CategoriesTab categories={categories} onChanged={loadCategories} />
@@ -189,10 +213,12 @@ export default function AdminPage() {
 function ClassesTab({
   classes,
   staff,
+  titles,
   onChanged,
 }: {
   classes: ClassRow[];
   staff: StaffRow[];
+  titles: StaffTitle[];
   onChanged: () => void;
 }) {
   const [name, setName] = useState("");
@@ -303,6 +329,7 @@ function ClassesTab({
               <ClassPanel
                 classId={c.id}
                 staff={staff}
+                titles={titles}
                 onChanged={onChanged}
               />
             )}
@@ -322,10 +349,12 @@ function ClassesTab({
 function ClassPanel({
   classId,
   staff,
+  titles,
   onChanged,
 }: {
   classId: number;
   staff: StaffRow[];
+  titles: StaffTitle[];
   onChanged: () => void;
 }) {
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
@@ -337,8 +366,8 @@ function ClassPanel({
   );
 
   const [userId, setUserId] = useState("");
-  const [staffRole, setStaffRole] = useState("counselor");
-  const [title, setTitle] = useState("");
+  const [titleId, setTitleId] = useState("");
+  const [assignError, setAssignError] = useState("");
 
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
@@ -400,19 +429,23 @@ function ClassPanel({
 
   async function addAssignment(e: React.FormEvent) {
     e.preventDefault();
-    if (!userId) return;
-    await apiFetch(`/api/admin/classes/${classId}/assignments`, {
-      method: "POST",
-      body: JSON.stringify({
-        userId: Number(userId),
-        staffRole,
-        title: title.trim() || undefined,
-      }),
-    });
-    setUserId("");
-    setTitle("");
-    loadAll();
-    onChanged();
+    setAssignError("");
+    if (!userId || !titleId) return;
+    try {
+      await apiFetch(`/api/admin/classes/${classId}/assignments`, {
+        method: "POST",
+        body: JSON.stringify({
+          userId: Number(userId),
+          titleId: Number(titleId),
+        }),
+      });
+      setUserId("");
+      setTitleId("");
+      loadAll();
+      onChanged();
+    } catch (err) {
+      setAssignError(err instanceof Error ? err.message : "授权失败");
+    }
   }
 
   async function removeAssignment(id: number) {
@@ -593,8 +626,14 @@ function ClassPanel({
                     <td>{s.studentNo}</td>
                     <td className="font-medium">{s.realName}</td>
                     <td>
-                      {s.cadreTitle ? (
-                        <span className="chip chip-purple">{s.cadreTitle}</span>
+                      {s.titles.length > 0 ? (
+                        <span className="flex gap-1 flex-wrap">
+                          {s.titles.map((t) => (
+                            <span key={t} className="chip chip-purple">
+                              {t}
+                            </span>
+                          ))}
+                        </span>
                       ) : (
                         <span className="text-[var(--color-ink-2)]">学生</span>
                       )}
@@ -617,40 +656,80 @@ function ClassPanel({
       {section === "assign" && (
         <div className="space-y-4">
           <form onSubmit={addAssignment} className="card p-5 bg-white/60">
-            <h3 className="font-medium mb-3 text-sm">分配接收端人员</h3>
-            <div className="grid sm:grid-cols-[1fr_140px_140px_auto] gap-3">
+            <h3 className="font-medium mb-1 text-sm">授予职务</h3>
+            <p className="text-xs text-[var(--color-ink-2)] mb-3">
+              可给本班白名单上的任何人授予职务（如将某位学生设为"学习委员"），
+              授予后该职务即成为学生写信时的收信对象。
+            </p>
+            <div className="grid sm:grid-cols-[1fr_180px_auto] gap-3">
               <select
                 className="select"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 required
               >
-                <option value="">选择教职工…</option>
-                {staff.map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.realName}（{s.loginId}·{ROLE_LABELS[s.role] ?? s.role}）
-                  </option>
-                ))}
+                <option value="">选择人员…</option>
+                {students.length > 0 && (
+                  <optgroup label="本班学生">
+                    {students.map((s) => (
+                      <option key={`stu-${s.userId}`} value={String(s.userId)}>
+                        {s.realName}（{s.studentNo}）
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="教职工">
+                  {staff.map((s) => (
+                    <option key={`staff-${s.id}`} value={String(s.id)}>
+                      {s.realName}（{s.loginId}·
+                      {ROLE_LABELS[s.role] ?? s.role}）
+                    </option>
+                  ))}
+                </optgroup>
               </select>
               <select
                 className="select"
-                value={staffRole}
-                onChange={(e) => setStaffRole(e.target.value)}
+                value={titleId}
+                onChange={(e) => setTitleId(e.target.value)}
+                required
               >
-                <option value="counselor">辅导员</option>
-                <option value="teacher">科任教师</option>
-                <option value="cadre">班干部</option>
+                <option value="">选择职务…</option>
+                {(["counselor", "teacher", "cadre"] as const).map((cat) => {
+                  const group = titles.filter(
+                    (t) => t.category === cat && t.isActive
+                  );
+                  if (group.length === 0) return null;
+                  const label =
+                    cat === "counselor"
+                      ? "辅导员类"
+                      : cat === "teacher"
+                        ? "教师类"
+                        : "班委类";
+                  return (
+                    <optgroup key={cat} label={label}>
+                      {group.map((t) => (
+                        <option key={t.id} value={String(t.id)}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
-              <input
-                className="input"
-                placeholder="备注（任教学科/职务）"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
               <button className="btn btn-primary" type="submit">
-                分配
+                授予
               </button>
             </div>
+            {assignError && (
+              <p className="text-sm text-[var(--color-danger)] mt-3">
+                {assignError}
+              </p>
+            )}
+            {titles.filter((t) => t.isActive).length === 0 && (
+              <p className="text-sm text-[var(--color-warning)] mt-3">
+                还没有启用的职务，可先到「职务管理」中新增，如"学习委员"。
+              </p>
+            )}
           </form>
 
           <div className="table-wrap card p-4 bg-white/60">
@@ -664,8 +743,8 @@ function ClassPanel({
                   <tr>
                     <th>姓名</th>
                     <th>账号</th>
-                    <th>角色</th>
-                    <th>备注</th>
+                    <th>职务</th>
+                    <th>类别</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -675,9 +754,11 @@ function ClassPanel({
                       <td className="font-medium">{a.realName}</td>
                       <td className="text-[var(--color-ink-2)]">{a.loginId}</td>
                       <td>
-                        <span className="chip chip-blue">{a.staffRoleLabel}</span>
+                        <span className="chip chip-purple">{a.titleName}</span>
                       </td>
-                      <td>{a.title ?? "—"}</td>
+                      <td>
+                        <span className="chip chip-blue">{a.categoryLabel}</span>
+                      </td>
                       <td>
                         <button
                           className="btn btn-danger btn-sm"
@@ -837,10 +918,7 @@ function StaffTab({
                   {s.assignments.length === 0
                     ? "—"
                     : s.assignments
-                        .map(
-                          (a) =>
-                            `${a.className}${a.title ? `（${a.title}）` : ""}`
-                        )
+                        .map((a) => `${a.className}（${a.titleName}）`)
                         .join("、")}
                 </td>
                 <td>
@@ -868,6 +946,167 @@ function StaffTab({
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------- 职务管理 Tab ----------
+function TitlesTab({
+  titles,
+  onChanged,
+}: {
+  titles: StaffTitle[];
+  onChanged: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState<"counselor" | "teacher" | "cadre">(
+    "cadre"
+  );
+  const [error, setError] = useState("");
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!name.trim()) return;
+    try {
+      await apiFetch("/api/admin/titles", {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim(), category }),
+      });
+      setName("");
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "新增失败");
+    }
+  }
+
+  async function toggleActive(t: StaffTitle) {
+    try {
+      await apiFetch(`/api/admin/titles/${t.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !t.isActive }),
+      });
+      onChanged();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "操作失败");
+    }
+  }
+
+  async function remove(t: StaffTitle) {
+    if (
+      !window.confirm(
+        `确定删除职务「${t.name}」？\n若该职务仍有人在任，将无法删除（可先停用）。`
+      )
+    )
+      return;
+    try {
+      await apiFetch(`/api/admin/titles/${t.id}`, { method: "DELETE" });
+      onChanged();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "删除失败");
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <form onSubmit={add} className="card p-6">
+        <h2 className="font-semibold mb-1">新增职务</h2>
+        <p className="text-sm text-[var(--color-ink-2)] mb-4">
+          新增的职务即成为学生写信时可选的收信对象，效果与"辅导员""班长"相同。
+          例如新选出学习委员后，在此新增"学习委员"，再到班级「人员授权」中授予对应同学。
+        </p>
+        <div className="grid sm:grid-cols-[1fr_180px_auto] gap-3">
+          <input
+            className="input"
+            placeholder="职务名称 *（如 学习委员、生活委员、心理委员）"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            maxLength={64}
+          />
+          <select
+            className="select"
+            value={category}
+            onChange={(e) =>
+              setCategory(e.target.value as typeof category)
+            }
+          >
+            <option value="cadre">班委类（学生干部）</option>
+            <option value="counselor">辅导员类</option>
+            <option value="teacher">教师类（科任老师）</option>
+          </select>
+          <button className="btn btn-primary" type="submit">
+            新增职务
+          </button>
+        </div>
+        {error && (
+          <p className="text-sm text-[var(--color-danger)] mt-3">{error}</p>
+        )}
+      </form>
+
+      <div className="card p-4 table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>职务名称</th>
+              <th>类别</th>
+              <th>在任人数</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {titles.map((t) => (
+              <tr key={t.id} className={t.isActive ? "" : "opacity-60"}>
+                <td className="font-medium">{t.name}</td>
+                <td>
+                  <span className="chip chip-blue">{t.categoryLabel}</span>
+                </td>
+                <td className="text-[var(--color-ink-2)]">
+                  {t.holderCount ?? 0} 人
+                </td>
+                <td>
+                  <span className={`chip ${t.isActive ? "chip-green" : ""}`}>
+                    {t.isActive ? "启用" : "停用"}
+                  </span>
+                </td>
+                <td>
+                  <div className="flex gap-2">
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => toggleActive(t)}
+                    >
+                      {t.isActive ? "停用" : "启用"}
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => remove(t)}
+                      disabled={(t.holderCount ?? 0) > 0}
+                      title={
+                        (t.holderCount ?? 0) > 0
+                          ? "仍有人在任，无法删除（可停用）"
+                          : "删除"
+                      }
+                    >
+                      删除
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {titles.length === 0 && (
+              <tr>
+                <td
+                  colSpan={5}
+                  className="text-center text-[var(--color-ink-2)] py-8"
+                >
+                  暂无职务，请先新增
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -1,7 +1,12 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { classes, suggestionCategories, suggestions } from "@/db/schema";
-import { fail, ok } from "@/lib/api";
+import {
+  classes,
+  staffTitles,
+  suggestionCategories,
+  suggestions,
+} from "@/db/schema";
+import { ok } from "@/lib/api";
 import { suggestionToDto } from "@/lib/dto";
 import { requireUser } from "@/lib/guard";
 
@@ -19,7 +24,7 @@ export async function GET() {
       classId: suggestions.classId,
       className: classes.name,
       visibility: suggestions.visibility,
-      targetGroups: suggestions.targetGroups,
+      targetTitleIds: suggestions.targetTitleIds,
       categoryId: suggestions.categoryId,
       categoryName: suggestionCategories.name,
       content: suggestions.content,
@@ -37,6 +42,24 @@ export async function GET() {
 
   if (rows.length === 0) return ok({ items: [] });
 
+  const titleIds = Array.from(
+    new Set(rows.flatMap((r) => r.targetTitleIds ?? []))
+  );
+  const titleRows = titleIds.length
+    ? await db
+        .select({ id: staffTitles.id, name: staffTitles.name })
+        .from(staffTitles)
+        .where(inArray(staffTitles.id, titleIds))
+    : [];
+  const titleMap = new Map(titleRows.map((t) => [t.id, t.name]));
+
   // 学生本人只能看到自己提交的内容；DTO 白名单同样不含身份字段
-  return ok({ items: rows.map((r) => suggestionToDto(r)) });
+  return ok({
+    items: rows.map((r) =>
+      suggestionToDto({
+        ...r,
+        targetTitleNames: (r.targetTitleIds ?? []).map((id) => titleMap.get(id) ?? ""),
+      })
+    ),
+  });
 }

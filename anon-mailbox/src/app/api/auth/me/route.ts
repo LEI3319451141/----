@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { classAssignments, classes, studentEnrollments } from "@/db/schema";
+import {
+  classAssignments,
+  classes,
+  staffTitles,
+  studentEnrollments,
+} from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import { fail, ok } from "@/lib/api";
 import { ROLE_LABELS } from "@/lib/labels";
@@ -24,18 +29,20 @@ export async function GET() {
     .where(eq(studentEnrollments.userId, user.id))
     .limit(1);
 
-  // 班级授权（辅导员 / 科任教师 / 班干部）
+  // 班级职务授权（辅导员 / 科任教师 / 班干部）
   const managedClasses = await db
     .select({
       classId: classes.id,
       className: classes.name,
       grade: classes.grade,
       department: classes.department,
-      staffRole: classAssignments.staffRole,
-      title: classAssignments.title,
+      titleId: staffTitles.id,
+      titleName: staffTitles.name,
+      category: staffTitles.category,
     })
     .from(classAssignments)
     .innerJoin(classes, eq(classes.id, classAssignments.classId))
+    .innerJoin(staffTitles, eq(staffTitles.id, classAssignments.titleId))
     .where(eq(classAssignments.userId, user.id));
 
   return ok({

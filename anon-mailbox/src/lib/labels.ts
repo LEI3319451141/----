@@ -8,12 +8,6 @@ export const ROLE_LABELS: Record<string, string> = {
   student: "学生",
 };
 
-export const RECIPIENT_TYPE_LABELS: Record<string, string> = {
-  counselor: "辅导员",
-  teacher: "科任教师",
-  cadre: "班干部",
-};
-
 export const SUGGESTION_VISIBILITY_LABELS: Record<string, string> = {
   public: "公开",
   group: "指定群体",

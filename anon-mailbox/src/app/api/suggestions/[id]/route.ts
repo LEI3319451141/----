@@ -1,6 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { classes, suggestionCategories, suggestions } from "@/db/schema";
+import {
+  classes,
+  staffTitles,
+  suggestionCategories,
+  suggestions,
+} from "@/db/schema";
 import { fail, ok } from "@/lib/api";
 import { visibilityCondition } from "@/lib/rbac";
 import { suggestionToDto } from "@/lib/dto";
@@ -27,7 +32,7 @@ export async function GET(
       classId: suggestions.classId,
       className: classes.name,
       visibility: suggestions.visibility,
-      targetGroups: suggestions.targetGroups,
+      targetTitleIds: suggestions.targetTitleIds,
       categoryId: suggestions.categoryId,
       categoryName: suggestionCategories.name,
       content: suggestions.content,
@@ -44,5 +49,18 @@ export async function GET(
 
   if (!row) return fail(404, "建议不存在或无权查看");
 
-  return ok(suggestionToDto(row));
+  const titleRows = row.targetTitleIds?.length
+    ? await db
+        .select({ id: staffTitles.id, name: staffTitles.name })
+        .from(staffTitles)
+        .where(inArray(staffTitles.id, row.targetTitleIds))
+    : [];
+  const titleMap = new Map(titleRows.map((t) => [t.id, t.name]));
+
+  return ok(
+    suggestionToDto({
+      ...row,
+      targetTitleNames: (row.targetTitleIds ?? []).map((id) => titleMap.get(id) ?? ""),
+    })
+  );
 }

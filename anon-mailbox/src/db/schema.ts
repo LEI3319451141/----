@@ -25,10 +25,11 @@ export const userStatusEnum = pgEnum("user_status", ["active", "disabled"]);
 
 export const classStatusEnum = pgEnum("class_status", ["active", "archived"]);
 
-export const staffRoleEnum = pgEnum("staff_role", [
-  "counselor", // 辅导员
-  "teacher", // 科任教师
-  "cadre", // 班干部
+// 职务的粗粒度权限类别：决定该职务持有者能否处理建议、归属哪类接收端
+export const staffCategoryEnum = pgEnum("staff_category", [
+  "counselor", // 辅导员类（跨班管理）
+  "teacher", // 科任教师类
+  "cadre", // 班干部类（学生兼任）
 ]);
 
 export const suggestionVisibilityEnum = pgEnum("suggestion_visibility", [
@@ -94,7 +95,19 @@ export const studentEnrollments = pgTable(
   ]
 );
 
-// ---------- 班级授权：决定谁能看哪个班的建议 ----------
+// ---------- 职务字典（全局可配置的收信对象，如 辅导员/科任老师/班长/学习委员） ----------
+export const staffTitles = pgTable("staff_titles", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 64 }).notNull().unique(),
+  // 粗粒度权限类别：counselor/teacher/cadre
+  category: staffCategoryEnum("category").notNull().default("cadre"),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- 班级授权：某人以某职务在某班任职（决定能看哪个班的建议） ----------
 export const classAssignments = pgTable(
   "class_assignments",
   {
@@ -105,13 +118,13 @@ export const classAssignments = pgTable(
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    staffRole: staffRoleEnum("staff_role").notNull(),
-    // 职务/任教学科，如：班长、学习委员、数学
-    title: varchar("title", { length: 64 }),
+    titleId: integer("title_id")
+      .notNull()
+      .references(() => staffTitles.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("class_assignments_uq").on(t.classId, t.userId, t.staffRole),
+    uniqueIndex("class_assignments_uq").on(t.classId, t.userId, t.titleId),
   ]
 );
 
@@ -137,12 +150,12 @@ export const suggestions = pgTable(
     submitterId: integer("submitter_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // 可见性：public=全班公开 / group=指定群体 / person=指定专人
+    // 可见性：public=全班公开 / group=指定职务群体 / person=指定专人
     visibility: suggestionVisibilityEnum("visibility")
       .notNull()
       .default("public"),
-    // visibility=group 时生效：可多选，如 ['teacher','cadre']
-    targetGroups: staffRoleEnum("target_groups")
+    // visibility=group 时生效：目标职务 ID 数组（可多选，如 [学习委员ID, 班长ID]）
+    targetTitleIds: integer("target_title_ids")
       .array()
       .notNull()
       .default([]),

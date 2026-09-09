@@ -4,13 +4,13 @@ import { db } from "@/db";
 import {
   classAssignments,
   classes,
+  staffTitles,
   suggestionCategories,
   suggestions,
 } from "@/db/schema";
 import { fail, ok } from "@/lib/api";
 import { randomAnonymousLabel } from "@/lib/label";
 import {
-  TARGETABLE_STAFF_ROLES,
   getAccessibleClassIds,
   getStudentClassId,
   visibilityCondition,
@@ -22,6 +22,17 @@ import type { CurrentUser } from "@/lib/auth";
 export const runtime = "nodejs";
 
 const PAGE_SIZE = 20;
+
+/** 加载职务字典（id → 名称），用于群体建议的展示文案 */
+async function loadTitleMap(ids: number[]): Promise<Map<number, string>> {
+  const uniqueIds = Array.from(new Set(ids));
+  if (uniqueIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: staffTitles.id, name: staffTitles.name })
+    .from(staffTitles)
+    .where(inArray(staffTitles.id, uniqueIds));
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
 
 /** 建议列表：班级隔离 + 可见性过滤双重强制；仅输出脱敏 DTO */
 export async function GET(req: Request) {
@@ -77,7 +88,7 @@ export async function GET(req: Request) {
       classId: suggestions.classId,
       className: classes.name,
       visibility: suggestions.visibility,
-      targetGroups: suggestions.targetGroups,
+      targetTitleIds: suggestions.targetTitleIds,
       categoryId: suggestions.categoryId,
       categoryName: suggestionCategories.name,
       content: suggestions.content,
@@ -94,21 +105,28 @@ export async function GET(req: Request) {
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
+  const titleMap = await loadTitleMap(
+    rows.flatMap((r) => r.targetTitleIds ?? [])
+  );
+
   return ok({
-    items: rows.map((r) => suggestionToDto(r)),
+    items: rows.map((r) =>
+      suggestionToDto({
+        ...r,
+        targetTitleNames: (r.targetTitleIds ?? []).map((id) => titleMap.get(id) ?? ""),
+      })
+    ),
     total: totalRow?.count ?? 0,
     page,
     pageSize,
   });
 }
 
-const STAFF_ROLE_VALUES = TARGETABLE_STAFF_ROLES as readonly string[];
-
 const submitSchema = z
   .object({
     visibility: z.enum(["public", "group", "person"]),
-    // group 模式：可多选的角色群体
-    targetGroups: z.array(z.string()).optional(),
+    // group 模式：目标职务 ID（可多选）
+    targetTitleIds: z.array(z.number().int().positive()).optional(),
     // person 模式：被指定的具体接收人
     targetUserId: z.number().int().positive().optional(),
     categoryId: z.number().int().positive().nullable().optional(),
@@ -120,18 +138,12 @@ const submitSchema = z
   })
   .superRefine((v, ctx) => {
     if (v.visibility === "group") {
-      const groups = (v.targetGroups ?? []).filter(Boolean);
-      if (groups.length === 0) {
+      const ids = Array.from(new Set(v.targetTitleIds ?? []));
+      if (ids.length === 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["targetGroups"],
-          message: "请至少选择一个可见群体",
-        });
-      } else if (!groups.every((g) => STAFF_ROLE_VALUES.includes(g))) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["targetGroups"],
-          message: "可见群体参数不合法",
+          path: ["targetTitleIds"],
+          message: "请至少选择一个收信职务",
         });
       }
     }
@@ -160,7 +172,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return fail(400, parsed.error.issues[0]?.message ?? "参数不正确");
   }
-  const { visibility, targetGroups, targetUserId, categoryId, content } =
+  const { visibility, targetTitleIds, targetUserId, categoryId, content } =
     parsed.data;
 
   // 分类校验（若传了）
@@ -173,12 +185,45 @@ export async function POST(req: Request) {
     if (!cat || !cat.isActive) return fail(400, "建议分类不存在");
   }
 
-  let normalizedTargetGroups: NonNullable<
-    typeof suggestions.$inferInsert.targetGroups
-  > = [];
+  let normalizedTitleIds: number[] = [];
+
+  if (visibility === "group") {
+    const ids = Array.from(new Set(targetTitleIds ?? []));
+    // 职务必须存在、启用，且在本班有在任人员（否则建议无人可见）
+    const titleRows = await db
+      .select({
+        id: staffTitles.id,
+        name: staffTitles.name,
+        isActive: staffTitles.isActive,
+      })
+      .from(staffTitles)
+      .where(inArray(staffTitles.id, ids));
+    if (titleRows.length !== ids.length) {
+      return fail(400, "选择的职务不存在");
+    }
+    const inactive = titleRows.find((t) => !t.isActive);
+    if (inactive) {
+      return fail(400, `职务「${inactive.name}」已停用，无法选择`);
+    }
+    const holders = await db
+      .select({ titleId: classAssignments.titleId })
+      .from(classAssignments)
+      .where(
+        and(
+          eq(classAssignments.classId, ownClassId),
+          inArray(classAssignments.titleId, ids)
+        )
+      );
+    const heldIds = new Set(holders.map((h) => h.titleId));
+    const noHolder = titleRows.find((t) => !heldIds.has(t.id));
+    if (noHolder) {
+      return fail(400, `职务「${noHolder.name}」在本班暂无在任人员`);
+    }
+    normalizedTitleIds = ids;
+  }
 
   if (visibility === "person") {
-    // 指定专人：必须是本班的辅导员/教师/班干部（class_assignments 中存在授权）
+    // 指定专人：必须是本班的职务持有者
     const [assignment] = await db
       .select({ id: classAssignments.id })
       .from(classAssignments)
@@ -194,18 +239,13 @@ export async function POST(req: Request) {
     }
   }
 
-  if (visibility === "group") {
-    // 已通过 zod 校验，值必为 staff_role 枚举
-    normalizedTargetGroups = Array.from(new Set(targetGroups ?? [])) as typeof normalizedTargetGroups;
-  }
-
   const [created] = await db
     .insert(suggestions)
     .values({
       classId: ownClassId,
       submitterId: user.id,
       visibility,
-      targetGroups: normalizedTargetGroups,
+      targetTitleIds: normalizedTitleIds,
       targetUserId: visibility === "person" ? targetUserId : null,
       categoryId: categoryId ?? null,
       content,
