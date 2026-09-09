@@ -31,10 +31,10 @@ export const staffRoleEnum = pgEnum("staff_role", [
   "cadre", // 班干部
 ]);
 
-export const recipientTypeEnum = pgEnum("recipient_type", [
-  "counselor", // 辅导员
-  "teacher", // 科任教师
-  "cadre", // 班干部
+export const suggestionVisibilityEnum = pgEnum("suggestion_visibility", [
+  "public", // 公开：全班所有人可见
+  "group", // 指定群体：target_groups 中的角色成员可见（可多选）
+  "person", // 指定专人：仅 target_user_id 本人可见
 ]);
 
 export const suggestionStatusEnum = pgEnum("suggestion_status", [
@@ -137,8 +137,19 @@ export const suggestions = pgTable(
     submitterId: integer("submitter_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // 学生选择的意向接收对象（班级全员可见，仅作筛选标签）
-    recipientType: recipientTypeEnum("recipient_type").notNull(),
+    // 可见性：public=全班公开 / group=指定群体 / person=指定专人
+    visibility: suggestionVisibilityEnum("visibility")
+      .notNull()
+      .default("public"),
+    // visibility=group 时生效：可多选，如 ['teacher','cadre']
+    targetGroups: staffRoleEnum("target_groups")
+      .array()
+      .notNull()
+      .default([]),
+    // visibility=person 时生效：仅该用户本人可见（含超管在内其他任何人不可见）
+    targetUserId: integer("target_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     categoryId: integer("category_id").references(() => suggestionCategories.id, {
       onDelete: "set null",
     }),

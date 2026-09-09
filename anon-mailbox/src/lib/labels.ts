@@ -14,6 +14,12 @@ export const RECIPIENT_TYPE_LABELS: Record<string, string> = {
   cadre: "班干部",
 };
 
+export const SUGGESTION_VISIBILITY_LABELS: Record<string, string> = {
+  public: "公开",
+  group: "指定群体",
+  person: "指定专人",
+};
+
 export const SUGGESTION_STATUS_LABELS: Record<string, string> = {
   pending: "待处理",
   processed: "已处理",

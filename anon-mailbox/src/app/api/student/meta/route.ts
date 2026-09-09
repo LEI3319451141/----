@@ -2,13 +2,13 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { classes, suggestionCategories } from "@/db/schema";
 import { fail, ok } from "@/lib/api";
-import { getStudentClassId } from "@/lib/rbac";
+import { TARGETABLE_STAFF_ROLES, getStudentClassId } from "@/lib/rbac";
 import { RECIPIENT_TYPE_LABELS } from "@/lib/labels";
 import { requireUser } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
-/** 提交页所需数据：我的班级、接收对象选项、建议分类 */
+/** 提交页所需数据：我的班级、可选群体、建议分类 */
 export async function GET() {
   const guard = await requireUser();
   if ("response" in guard) return guard.response;
@@ -37,7 +37,7 @@ export async function GET() {
 
   return ok({
     myClass: cls ?? { id: classId, name: "未知班级" },
-    recipientTypes: (["counselor", "teacher", "cadre"] as const).map((v) => ({
+    groupOptions: TARGETABLE_STAFF_ROLES.map((v) => ({
       value: v,
       label: RECIPIENT_TYPE_LABELS[v],
     })),

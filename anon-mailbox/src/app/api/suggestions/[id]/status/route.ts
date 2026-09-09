@@ -1,9 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { suggestions } from "@/db/schema";
 import { fail, ok } from "@/lib/api";
-import { canAccessClass, isStaffRole } from "@/lib/rbac";
+import { isStaffRole, visibilityCondition } from "@/lib/rbac";
 import { requireUser } from "@/lib/guard";
 
 export const runtime = "nodejs";
@@ -33,15 +33,13 @@ export async function PATCH(
   const parsed = schema.safeParse(body);
   if (!parsed.success) return fail(400, "状态值不正确");
 
+  // 可见性过滤：只有"能看到这条建议"的接收端才能处理它（专人建议仅本人可处理）
   const [target] = await db
     .select({ id: suggestions.id, classId: suggestions.classId })
     .from(suggestions)
-    .where(eq(suggestions.id, suggestionId))
+    .where(and(eq(suggestions.id, suggestionId), visibilityCondition(user)))
     .limit(1);
-  if (!target) return fail(404, "建议不存在");
-
-  const allowed = await canAccessClass(user, target.classId);
-  if (!allowed) return fail(403, "无权操作该建议");
+  if (!target) return fail(404, "建议不存在或无权操作");
 
   const processed = parsed.data.status === "processed";
   await db

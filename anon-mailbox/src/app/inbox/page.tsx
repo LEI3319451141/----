@@ -9,7 +9,6 @@ import {
 } from "@/lib/client-api";
 import { TopNav } from "@/components/TopNav";
 import { PasswordModal } from "@/components/PasswordModal";
-import { RECIPIENT_TYPE_LABELS } from "@/lib/labels";
 
 interface ClassOption {
   id: number;
@@ -20,7 +19,8 @@ interface SuggestionDto {
   id: number;
   classId: number;
   className: string | null;
-  recipientType: string;
+  visibility: string;
+  audienceLabel: string;
   categoryName: string | null;
   content: string;
   anonymousLabel: string;
@@ -47,7 +47,7 @@ export default function InboxPage() {
   );
 
   const [classId, setClassId] = useState<number | "">("");
-  const [recipientType, setRecipientType] = useState<string>("");
+  const [visibility, setVisibility] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
 
@@ -65,7 +65,7 @@ export default function InboxPage() {
       try {
         const params = new URLSearchParams();
         if (classId !== "") params.set("classId", String(classId));
-        if (recipientType) params.set("recipientType", recipientType);
+        if (visibility) params.set("visibility", visibility);
         if (status) params.set("status", status);
         if (categoryId) params.set("categoryId", categoryId);
         params.set("page", String(p));
@@ -81,7 +81,7 @@ export default function InboxPage() {
         setLoading(false);
       }
     },
-    [classId, recipientType, status, categoryId]
+    [classId, visibility, status, categoryId]
   );
 
   useEffect(() => {
@@ -135,7 +135,7 @@ export default function InboxPage() {
   useEffect(() => {
     if (me) loadPage(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, classId, recipientType, status, categoryId]);
+  }, [me, classId, visibility, status, categoryId]);
 
   async function toggleStatus(s: SuggestionDto) {
     const next = s.status === "processed" ? "pending" : "processed";
@@ -220,13 +220,13 @@ export default function InboxPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <select
               className="select max-w-[150px]"
-              value={recipientType}
-              onChange={(e) => setRecipientType(e.target.value)}
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value)}
             >
-              <option value="">全部接收对象</option>
-              <option value="counselor">辅导员</option>
-              <option value="teacher">科任教师</option>
-              <option value="cadre">班干部</option>
+              <option value="">全部可见性</option>
+              <option value="public">公开</option>
+              <option value="group">指定群体</option>
+              <option value="person">指定专人</option>
             </select>
             <select
               className="select max-w-[130px]"
@@ -264,8 +264,16 @@ export default function InboxPage() {
                 <span className="chip chip-purple font-medium">
                   {s.anonymousLabel}
                 </span>
-                <span className="chip chip-blue">
-                  致 · {RECIPIENT_TYPE_LABELS[s.recipientType] ?? s.recipientType}
+                <span
+                  className={`chip ${
+                    s.visibility === "person"
+                      ? "chip-orange"
+                      : s.visibility === "group"
+                        ? "chip-blue"
+                        : "chip-green"
+                  }`}
+                >
+                  {s.audienceLabel}
                 </span>
                 {s.categoryName && <span className="chip">{s.categoryName}</span>}
                 {me.isSuperAdmin && s.className && (
