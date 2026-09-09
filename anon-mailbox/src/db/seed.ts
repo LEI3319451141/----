@@ -4,28 +4,38 @@ import { db } from "./index";
 import { suggestionCategories, users } from "./schema";
 
 async function main() {
-  const adminLogin = process.env.SEED_ADMIN_LOGIN ?? "admin";
-  const adminPwd = process.env.SEED_ADMIN_PASSWORD ?? "admin123456";
+  // 超级管理员（两个账号，可用环境变量覆盖）
+  const adminAccounts = [
+    {
+      loginId: process.env.SEED_ADMIN1_LOGIN ?? "管理员1",
+      password: process.env.SEED_ADMIN1_PASSWORD ?? "123456",
+      realName: "管理员1",
+    },
+    {
+      loginId: process.env.SEED_ADMIN2_LOGIN ?? "管理员2",
+      password: process.env.SEED_ADMIN2_PASSWORD ?? "456789",
+      realName: "管理员2",
+    },
+  ];
 
-  // 超级管理员
-  const [existingAdmin] = await db
-    .select()
-    .from(users)
-    .where(eq(users.loginId, adminLogin))
-    .limit(1);
-  if (!existingAdmin) {
-    await db.insert(users).values({
-      loginId: adminLogin,
-      passwordHash: await bcrypt.hash(adminPwd, 10),
-      realName: "超级管理员",
-      role: "super_admin",
-      mustResetPassword: true,
-    });
-    console.log(
-      `✔ 已创建超级管理员：${adminLogin} / ${adminPwd}（首次登录请修改密码）`
-    );
-  } else {
-    console.log("· 超级管理员已存在，跳过");
+  for (const acc of adminAccounts) {
+    const [existing] = await db
+      .select()
+      .from(users)
+      .where(eq(users.loginId, acc.loginId))
+      .limit(1);
+    if (!existing) {
+      await db.insert(users).values({
+        loginId: acc.loginId,
+        passwordHash: await bcrypt.hash(acc.password, 10),
+        realName: acc.realName,
+        role: "super_admin",
+        mustResetPassword: false,
+      });
+      console.log(`✔ 已创建超级管理员：${acc.loginId} / ${acc.password}`);
+    } else {
+      console.log(`· 超级管理员 ${acc.loginId} 已存在，跳过`);
+    }
   }
 
   // 默认建议分类
