@@ -49,11 +49,13 @@ export const users = pgTable("users", {
   // 登录账号：学生=学号，教职工=工号/自定义账号
   loginId: varchar("login_id", { length: 64 }).notNull().unique(),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
-  // 真实姓名——学生的此字段属于保密信息，绝不进入接收端响应
+  // 真实姓名——默认保密，仅当建议为实名提交（is_anonymous=false）时才进入接收端响应
   realName: varchar("real_name", { length: 64 }).notNull(),
   role: roleEnum("role").notNull(),
   status: userStatusEnum("status").notNull().default("active"),
   mustResetPassword: boolean("must_reset_password").notNull().default(false),
+  // 特例：该接收人（如辅导员谢智）收到的建议信必须实名呈现
+  forceRealName: boolean("force_real_name").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -167,7 +169,9 @@ export const suggestions = pgTable(
       onDelete: "set null",
     }),
     content: text("content").notNull(),
-    // 每次提交随机生成的脱敏标识，如 "同学F"
+    // 是否匿名：true=接收端只见脱敏标识（同学X）；false=实名呈现提交者姓名
+    isAnonymous: boolean("is_anonymous").notNull().default(true),
+    // 每次提交随机生成的脱敏标识，如 "同学F"（实名建议仍生成但不展示）
     anonymousLabel: varchar("anonymous_label", { length: 32 }).notNull(),
     status: suggestionStatusEnum("status").notNull().default("pending"),
     processedBy: integer("processed_by").references(() => users.id, {

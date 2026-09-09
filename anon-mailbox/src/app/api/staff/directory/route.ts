@@ -28,6 +28,7 @@ export async function GET() {
       titleId: staffTitles.id,
       titleName: staffTitles.name,
       category: staffTitles.category,
+      forceRealName: users.forceRealName,
     })
     .from(classAssignments)
     .innerJoin(users, eq(users.id, classAssignments.userId))
@@ -43,6 +44,7 @@ export async function GET() {
       titleName: r.titleName,
       category: r.category,
       categoryLabel: STAFF_CATEGORY_LABELS[r.category] ?? r.category,
+      forceRealName: r.forceRealName,
     })),
   });
 }

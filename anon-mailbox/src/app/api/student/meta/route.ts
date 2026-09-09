@@ -5,6 +5,7 @@ import {
   classes,
   staffTitles,
   suggestionCategories,
+  users,
 } from "@/db/schema";
 import { fail, ok } from "@/lib/api";
 import { getStudentClassId } from "@/lib/rbac";
@@ -35,9 +36,11 @@ export async function GET() {
       id: staffTitles.id,
       name: staffTitles.name,
       category: staffTitles.category,
+      holderForceRealName: users.forceRealName,
     })
     .from(classAssignments)
     .innerJoin(staffTitles, eq(staffTitles.id, classAssignments.titleId))
+    .innerJoin(users, eq(users.id, classAssignments.userId))
     .where(
       and(
         eq(classAssignments.classId, classId),
@@ -46,15 +49,24 @@ export async function GET() {
     )
     .orderBy(asc(staffTitles.sortOrder), staffTitles.id);
 
-  // 去重（同一职务可能多人在任）
+  // 去重（同一职务可能多人在任）；任一在任人要求实名，则该职务强制实名
   const seen = new Set<number>();
+  const forceTitleIds = new Set<number>();
+  for (const t of titleRows) {
+    if (t.holderForceRealName) forceTitleIds.add(t.id);
+  }
   const groupOptions = titleRows
     .filter((t) => {
       if (seen.has(t.id)) return false;
       seen.add(t.id);
       return true;
     })
-    .map((t) => ({ id: t.id, name: t.name, category: t.category }));
+    .map((t) => ({
+      id: t.id,
+      name: t.name,
+      category: t.category,
+      forceRealName: forceTitleIds.has(t.id),
+    }));
 
   const categories = await db
     .select({

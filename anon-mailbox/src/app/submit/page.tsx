@@ -15,7 +15,12 @@ type Visibility = "public" | "group" | "person";
 
 interface Meta {
   myClass: { id: number; name: string };
-  groupOptions: { id: number; name: string; category?: string }[];
+  groupOptions: {
+    id: number;
+    name: string;
+    category?: string;
+    forceRealName?: boolean;
+  }[];
   categories: { id: number; name: string }[];
 }
 
@@ -26,6 +31,7 @@ interface StaffMember {
   titleName: string;
   category: string;
   categoryLabel: string;
+  forceRealName?: boolean;
 }
 
 interface MySuggestion {
@@ -35,6 +41,7 @@ interface MySuggestion {
   content: string;
   status: string;
   timeDisplay: string;
+  isAnonymous: boolean;
 }
 
 export default function SubmitPage() {
@@ -50,9 +57,14 @@ export default function SubmitPage() {
   const [targetUserId, setTargetUserId] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [content, setContent] = useState("");
+  // 署名方式：默认匿名；当受众含"要求实名"的接收人时由服务端强制实名
+  const [isAnonymous, setIsAnonymous] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [successLabel, setSuccessLabel] = useState<string | null>(null);
+  const [submitResult, setSubmitResult] = useState<{
+    anonymousLabel: string;
+    isAnonymous: boolean;
+  } | null>(null);
 
   const [history, setHistory] = useState<MySuggestion[]>([]);
 
@@ -96,6 +108,18 @@ export default function SubmitPage() {
     })();
   }, [router, loadHistory]);
 
+  // 当前选择的受众中是否含"要求实名"的接收人（如辅导员谢智）
+  const forceRealName =
+    visibility === "person"
+      ? !!staff.find((s) => s.id === targetUserId)?.forceRealName
+      : visibility === "group"
+        ? targetTitleIds.some(
+            (id) =>
+              meta?.groupOptions.find((g) => g.id === id)?.forceRealName === true
+          )
+        : false;
+  const effectiveAnonymous = forceRealName ? false : isAnonymous;
+
   function toggleTitle(id: number) {
     setTargetTitleIds((prev) =>
       prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
@@ -119,24 +143,29 @@ export default function SubmitPage() {
     }
     setSubmitting(true);
     try {
-      const res = await apiFetch<{ anonymousLabel: string }>(
-        "/api/suggestions",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            visibility,
-            targetTitleIds:
-              visibility === "group" ? targetTitleIds : undefined,
-            targetUserId: visibility === "person" ? targetUserId : undefined,
-            categoryId,
-            content: content.trim(),
-          }),
-        }
-      );
-      setSuccessLabel(res.anonymousLabel);
+      const res = await apiFetch<{
+        anonymousLabel: string;
+        isAnonymous: boolean;
+      }>("/api/suggestions", {
+        method: "POST",
+        body: JSON.stringify({
+          visibility,
+          targetTitleIds:
+            visibility === "group" ? targetTitleIds : undefined,
+          targetUserId: visibility === "person" ? targetUserId : undefined,
+          categoryId,
+          isAnonymous: effectiveAnonymous,
+          content: content.trim(),
+        }),
+      });
+      setSubmitResult({
+        anonymousLabel: res.anonymousLabel,
+        isAnonymous: res.isAnonymous,
+      });
       setContent("");
       setTargetTitleIds([]);
       setTargetUserId(null);
+      setIsAnonymous(true);
       loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交失败");
@@ -171,18 +200,34 @@ export default function SubmitPage() {
       />
 
       <main className="max-w-3xl mx-auto px-5 py-10">
-        {successLabel ? (
+        {submitResult ? (
           <div className="card p-10 text-center fade-in">
-            <div className="text-5xl mb-4">🔒</div>
-            <h2 className="text-xl font-semibold mb-2">建议已匿名提交</h2>
-            <p className="text-[var(--color-ink-2)] text-sm leading-relaxed">
-              你的身份信息已完全保密，接收端只会看到
-              <span className="chip chip-purple mx-1">{successLabel}</span>
-              这样的脱敏标识，无法追溯到你本人。
-            </p>
+            {submitResult.isAnonymous ? (
+              <>
+                <div className="text-5xl mb-4">🔒</div>
+                <h2 className="text-xl font-semibold mb-2">建议已匿名提交</h2>
+                <p className="text-[var(--color-ink-2)] text-sm leading-relaxed">
+                  你的身份信息已完全保密，接收端只会看到
+                  <span className="chip chip-purple mx-1">
+                    {submitResult.anonymousLabel}
+                  </span>
+                  这样的脱敏标识，无法追溯到你本人。
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-5xl mb-4">✉️</div>
+                <h2 className="text-xl font-semibold mb-2">建议已实名提交</h2>
+                <p className="text-[var(--color-ink-2)] text-sm leading-relaxed">
+                  接收端将显示你的真实姓名
+                  <span className="chip chip-blue mx-1">{me.user.realName}</span>
+                  ，请耐心等待对方查阅与处理。
+                </p>
+              </>
+            )}
             <button
               className="btn btn-primary mt-7"
-              onClick={() => setSuccessLabel(null)}
+              onClick={() => setSubmitResult(null)}
             >
               再提一条
             </button>
@@ -190,11 +235,11 @@ export default function SubmitPage() {
         ) : (
           <div className="card p-7 sm:p-9 fade-in">
             <h1 className="text-2xl font-semibold tracking-tight">
-              提交匿名建议
+              提交建议
             </h1>
             <p className="text-sm text-[var(--color-ink-2)] mt-1.5">
               当前班级：<b>{meta?.myClass.name ?? "…"}</b>
-              。你的姓名与学号不会出现在任何接收端页面。
+              。可自由选择匿名或实名提交；致辅导员谢智的信件将按要求实名呈现。
             </p>
 
             <form onSubmit={submit} className="mt-7 space-y-6">
@@ -287,6 +332,41 @@ export default function SubmitPage() {
                 )}
               </div>
 
+              {/* 署名方式 */}
+              <div>
+                <label className="label">署名方式</label>
+                <div className="segmented">
+                  <button
+                    type="button"
+                    className={effectiveAnonymous ? "active" : ""}
+                    disabled={forceRealName}
+                    onClick={() => setIsAnonymous(true)}
+                  >
+                    匿名提交
+                  </button>
+                  <button
+                    type="button"
+                    className={!effectiveAnonymous ? "active" : ""}
+                    onClick={() => setIsAnonymous(false)}
+                  >
+                    实名提交
+                  </button>
+                </div>
+                {forceRealName ? (
+                  <p className="text-xs text-[var(--color-warning)] mt-2">
+                    致辅导员谢智的信件按要求需实名呈现，接收端将显示你的真实姓名，不可匿名。
+                  </p>
+                ) : effectiveAnonymous ? (
+                  <p className="text-xs text-[var(--color-ink-2)] mt-2">
+                    匿名提交：接收端只会看到「同学X」这类随机脱敏标识，无法追溯到你本人。
+                  </p>
+                ) : (
+                  <p className="text-xs text-[var(--color-ink-2)] mt-2">
+                    实名提交：接收端将显示你的真实姓名，请确认内容客观、属实。
+                  </p>
+                )}
+              </div>
+
               <div>
                 <label className="label">建议分类</label>
                 <select
@@ -332,7 +412,11 @@ export default function SubmitPage() {
                 className="btn btn-primary w-full"
                 disabled={submitting}
               >
-                {submitting ? "提交中…" : "匿名提交"}
+                {submitting
+                  ? "提交中…"
+                  : effectiveAnonymous
+                    ? "匿名提交"
+                    : "实名提交"}
               </button>
             </form>
           </div>
@@ -348,6 +432,9 @@ export default function SubmitPage() {
                 <div key={s.id} className="card p-5 fade-in">
                   <div className="flex items-center gap-2 flex-wrap mb-2">
                     <span className="chip chip-purple">{s.audienceLabel}</span>
+                    <span className={`chip ${s.isAnonymous ? "" : "chip-blue"}`}>
+                      {s.isAnonymous ? "匿名" : "实名"}
+                    </span>
                     {s.categoryName && <span className="chip">{s.categoryName}</span>}
                     <span
                       className={`chip ${s.status === "processed" ? "chip-green" : "chip-orange"}`}

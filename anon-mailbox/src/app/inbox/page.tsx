@@ -23,6 +23,8 @@ interface SuggestionDto {
   audienceLabel: string;
   categoryName: string | null;
   content: string;
+  isAnonymous: boolean;
+  authorName: string | null;
   anonymousLabel: string;
   status: string;
   timeDisplay: string;
@@ -261,9 +263,15 @@ export default function InboxPage() {
           {items.map((s) => (
             <div key={s.id} className="card p-6 fade-in">
               <div className="flex items-center gap-2 flex-wrap mb-3">
-                <span className="chip chip-purple font-medium">
-                  {s.anonymousLabel}
-                </span>
+                {s.isAnonymous ? (
+                  <span className="chip chip-purple font-medium">
+                    {s.anonymousLabel}
+                  </span>
+                ) : (
+                  <span className="chip chip-blue font-medium">
+                    实名 · {s.authorName}
+                  </span>
+                )}
                 <span
                   className={`chip ${
                     s.visibility === "person"

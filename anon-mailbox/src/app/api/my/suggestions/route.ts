@@ -5,6 +5,7 @@ import {
   staffTitles,
   suggestionCategories,
   suggestions,
+  users,
 } from "@/db/schema";
 import { ok } from "@/lib/api";
 import { suggestionToDto } from "@/lib/dto";
@@ -28,6 +29,8 @@ export async function GET() {
       categoryId: suggestions.categoryId,
       categoryName: suggestionCategories.name,
       content: suggestions.content,
+      isAnonymous: suggestions.isAnonymous,
+      authorName: users.realName,
       anonymousLabel: suggestions.anonymousLabel,
       status: suggestions.status,
       createdAt: suggestions.createdAt,
@@ -35,6 +38,7 @@ export async function GET() {
     })
     .from(suggestions)
     .leftJoin(classes, eq(classes.id, suggestions.classId))
+    .leftJoin(users, eq(users.id, suggestions.submitterId))
     .leftJoin(suggestionCategories, eq(suggestionCategories.id, suggestions.categoryId))
     .where(eq(suggestions.submitterId, user.id))
     .orderBy(desc(suggestions.createdAt))

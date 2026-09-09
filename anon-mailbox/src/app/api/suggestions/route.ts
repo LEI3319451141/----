@@ -7,6 +7,7 @@ import {
   staffTitles,
   suggestionCategories,
   suggestions,
+  users,
 } from "@/db/schema";
 import { fail, ok } from "@/lib/api";
 import { randomAnonymousLabel } from "@/lib/label";
@@ -92,6 +93,8 @@ export async function GET(req: Request) {
       categoryId: suggestions.categoryId,
       categoryName: suggestionCategories.name,
       content: suggestions.content,
+      isAnonymous: suggestions.isAnonymous,
+      authorName: users.realName,
       anonymousLabel: suggestions.anonymousLabel,
       status: suggestions.status,
       createdAt: suggestions.createdAt,
@@ -99,6 +102,7 @@ export async function GET(req: Request) {
     })
     .from(suggestions)
     .leftJoin(classes, eq(classes.id, suggestions.classId))
+    .leftJoin(users, eq(users.id, suggestions.submitterId))
     .leftJoin(suggestionCategories, eq(suggestionCategories.id, suggestions.categoryId))
     .where(where)
     .orderBy(desc(suggestions.createdAt))
@@ -130,6 +134,8 @@ const submitSchema = z
     // person 模式：被指定的具体接收人
     targetUserId: z.number().int().positive().optional(),
     categoryId: z.number().int().positive().nullable().optional(),
+    // 是否匿名：默认匿名；收信人要求实名时服务端强制改为 false
+    isAnonymous: z.boolean().optional(),
     content: z
       .string()
       .trim()
@@ -174,6 +180,9 @@ export async function POST(req: Request) {
   }
   const { visibility, targetTitleIds, targetUserId, categoryId, content } =
     parsed.data;
+
+  // 受众中是否包含"要求实名"的接收人（如辅导员谢智）——服务端强制，前端不可绕过
+  let audienceForceRealName = false;
 
   // 分类校验（若传了）
   if (categoryId) {
@@ -220,13 +229,32 @@ export async function POST(req: Request) {
       return fail(400, `职务「${noHolder.name}」在本班暂无在任人员`);
     }
     normalizedTitleIds = ids;
+
+    // 所选职务的在任人中若有"要求实名"的接收人（如辅导员谢智），强制实名
+    const [forcedHolder] = await db
+      .select({ id: classAssignments.id })
+      .from(classAssignments)
+      .innerJoin(users, eq(users.id, classAssignments.userId))
+      .where(
+        and(
+          eq(classAssignments.classId, ownClassId),
+          inArray(classAssignments.titleId, ids),
+          eq(users.forceRealName, true)
+        )
+      )
+      .limit(1);
+    if (forcedHolder) audienceForceRealName = true;
   }
 
   if (visibility === "person") {
-    // 指定专人：必须是本班的职务持有者
+    // 指定专人：必须是本班的职务持有者；同时读取该接收人是否要求实名
     const [assignment] = await db
-      .select({ id: classAssignments.id })
+      .select({
+        id: classAssignments.id,
+        forceRealName: users.forceRealName,
+      })
       .from(classAssignments)
+      .innerJoin(users, eq(users.id, classAssignments.userId))
       .where(
         and(
           eq(classAssignments.classId, ownClassId),
@@ -237,7 +265,13 @@ export async function POST(req: Request) {
     if (!assignment) {
       return fail(400, "指定的接收人不存在或不在本班接收端名单中");
     }
+    audienceForceRealName = assignment.forceRealName;
   }
+
+  // 强制实名优先；否则尊重学生选择，缺省匿名
+  const isAnonymous = audienceForceRealName
+    ? false
+    : (parsed.data.isAnonymous ?? true);
 
   const [created] = await db
     .insert(suggestions)
@@ -249,12 +283,19 @@ export async function POST(req: Request) {
       targetUserId: visibility === "person" ? targetUserId : null,
       categoryId: categoryId ?? null,
       content,
+      isAnonymous,
       anonymousLabel: randomAnonymousLabel(),
     })
     .returning({ id: suggestions.id, anonymousLabel: suggestions.anonymousLabel });
 
   return ok(
-    { success: true, id: created.id, anonymousLabel: created.anonymousLabel },
+    {
+      success: true,
+      id: created.id,
+      anonymousLabel: created.anonymousLabel,
+      isAnonymous,
+      forceRealName: audienceForceRealName,
+    },
     201
   );
 }
