@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { suggestionComments, suggestions, users } from "@/db/schema";
