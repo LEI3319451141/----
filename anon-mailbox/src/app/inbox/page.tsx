@@ -30,6 +30,7 @@ interface SuggestionDto {
   likeCount: number;
   commentCount: number;
   likedByMe: boolean;
+  isMine: boolean;
   status: string;
   timeDisplay: string;
   processed: boolean;
@@ -181,6 +182,28 @@ export default function InboxPage() {
     setItems((prev) =>
       prev.map((it) => (it.id === id ? { ...it, commentCount: count } : it))
     );
+  }
+
+  /** 发信人可删自己的建议；超管可删除任何建议 */
+  const canDeleteSuggestion = (s: SuggestionDto) =>
+    s.isMine || me?.user.role === "super_admin";
+
+  async function deleteSuggestion(s: SuggestionDto) {
+    if (
+      !window.confirm(
+        "确定删除这条建议？相关评论和点赞将一并删除，且不可恢复。"
+      )
+    )
+      return;
+    try {
+      await apiFetch(`/api/suggestions/${s.id}`, { method: "DELETE" });
+      setItems((prev) => prev.filter((it) => it.id !== s.id));
+      setTotal((t) => Math.max(0, t - 1));
+      if (openComments === s.id) setOpenComments(null);
+      loadStats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
+    }
   }
 
   const hasMore = items.length < total;
@@ -354,6 +377,15 @@ export default function InboxPage() {
                       {s.commentCount > 0 ? s.commentCount : "评论"}
                     </span>
                   </button>
+                  {canDeleteSuggestion(s) && (
+                    <button
+                      className="text-sm flex items-center gap-1.5 text-[var(--color-ink-2)] hover:text-[var(--color-danger)] transition-colors"
+                      onClick={() => deleteSuggestion(s)}
+                    >
+                      <span>🗑</span>
+                      <span>删除</span>
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-[var(--color-ink-2)]">

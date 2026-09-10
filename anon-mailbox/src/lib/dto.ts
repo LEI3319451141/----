@@ -23,6 +23,8 @@ interface SuggestionSerializable {
   likeCount?: number;
   commentCount?: number;
   likedByMe?: boolean;
+  /** 当前用户是否为发信人（用于删除按钮显隐） */
+  isMine?: boolean;
 }
 
 /** 可见性展示文案（person 定向建议只有被指定人本人能查到，故直接显示"仅你可见"） */
@@ -65,6 +67,7 @@ export function suggestionToDto(s: SuggestionSerializable) {
     likeCount: s.likeCount ?? 0,
     commentCount: s.commentCount ?? 0,
     likedByMe: s.likedByMe ?? false,
+    isMine: s.isMine ?? false,
     status: s.status,
     timeDisplay: fuzzyTime(s.createdAt),
     processed: s.status === "processed",

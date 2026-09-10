@@ -70,3 +70,37 @@ export async function GET(
     })
   );
 }
+
+/**
+ * 删除建议（硬删除，评论/点赞级联清除）：
+ * - 发信人可删自己的建议
+ * - 超管拥有全部权限，可删除任何建议
+ * - 其他人一律 404（不泄露定向建议的存在性）
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const guard = await requireUser();
+  if ("response" in guard) return guard.response;
+  const user = guard.user;
+
+  const { id } = await params;
+  const suggestionId = Number(id);
+  if (!Number.isInteger(suggestionId)) return fail(400, "建议 ID 不正确");
+
+  const [row] = await db
+    .select({ id: suggestions.id, submitterId: suggestions.submitterId })
+    .from(suggestions)
+    .where(eq(suggestions.id, suggestionId))
+    .limit(1);
+  if (!row) return fail(404, "建议不存在或无权删除");
+
+  const isOwner = row.submitterId === user.id;
+  if (!isOwner && user.role !== "super_admin") {
+    return fail(404, "建议不存在或无权删除");
+  }
+
+  await db.delete(suggestions).where(eq(suggestions.id, suggestionId));
+  return ok({ success: true });
+}

@@ -84,6 +84,8 @@ export async function GET(
       isAnonymous: r.isAnonymous,
       authorDisplay: displayById.get(r.id) ?? "同学",
       isMine: r.userId === user.id,
+      // 作者本人或超管可删
+      canDelete: r.userId === user.id || user.role === "super_admin",
       content: r.content,
       timeDisplay: fuzzyTime(r.createdAt),
     })),

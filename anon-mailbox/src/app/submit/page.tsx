@@ -46,6 +46,7 @@ interface MySuggestion {
   likeCount: number;
   commentCount: number;
   likedByMe: boolean;
+  isMine: boolean;
 }
 
 export default function SubmitPage() {
@@ -146,6 +147,22 @@ export default function SubmitPage() {
       );
     } catch {
       // 静默失败：点赞不阻塞主流程
+    }
+  }
+
+  async function deleteHistory(s: MySuggestion) {
+    if (
+      !window.confirm(
+        "确定删除这条建议？相关评论和点赞将一并删除，且不可恢复。"
+      )
+    )
+      return;
+    try {
+      await apiFetch(`/api/suggestions/${s.id}`, { method: "DELETE" });
+      setHistory((prev) => prev.filter((it) => it.id !== s.id));
+      if (openComments === s.id) setOpenComments(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
     }
   }
 
@@ -496,6 +513,15 @@ export default function SubmitPage() {
                       <span>💬</span>
                       <span>{s.commentCount > 0 ? s.commentCount : "评论"}</span>
                     </button>
+                    {(s.isMine || me?.user.role === "super_admin") && (
+                      <button
+                        className="text-sm flex items-center gap-1.5 text-[var(--color-ink-2)] hover:text-[var(--color-danger)] transition-colors"
+                        onClick={() => deleteHistory(s)}
+                      >
+                        <span>🗑</span>
+                        <span>删除</span>
+                      </button>
+                    )}
                   </div>
                   {openComments === s.id && (
                     <CommentPanel

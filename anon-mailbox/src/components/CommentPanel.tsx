@@ -10,6 +10,7 @@ interface CommentItem {
   isAnonymous: boolean;
   authorDisplay: string;
   isMine: boolean;
+  canDelete: boolean;
   content: string;
   timeDisplay: string;
 }
@@ -97,6 +98,23 @@ export function CommentPanel({ suggestionId, onCountChange }: CommentPanelProps)
     }
   }
 
+  async function removeComment(c: CommentItem) {
+    const hasReplies = items.some((i) => i.parentId === c.id);
+    const tip = hasReplies
+      ? `删除该评论？其下 ${items.filter((i) => i.parentId === c.id).length} 条回复也将一并删除，不可恢复。`
+      : "确定删除这条评论？删除后不可恢复。";
+    if (!window.confirm(tip)) return;
+    setError("");
+    try {
+      await apiFetch(`/api/suggestions/${suggestionId}/comments/${c.id}`, {
+        method: "DELETE",
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
+    }
+  }
+
   function authorChip(c: CommentItem) {
     return c.isAnonymous ? (
       <span className="chip chip-purple font-medium">{c.authorDisplay}</span>
@@ -129,6 +147,15 @@ export function CommentPanel({ suggestionId, onCountChange }: CommentPanelProps)
           >
             回复
           </button>
+          {c.canDelete && (
+            <button
+              type="button"
+              className="text-xs text-[var(--color-danger)] hover:underline"
+              onClick={() => removeComment(c)}
+            >
+              删除
+            </button>
+          )}
         </div>
         <p className="text-sm leading-6 mt-1 whitespace-pre-wrap text-[var(--color-ink)]">
           {c.content}
