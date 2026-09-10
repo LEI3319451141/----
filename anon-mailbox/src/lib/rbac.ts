@@ -1,4 +1,4 @@
-import { eq, sql, SQL } from "drizzle-orm";
+import { and, eq, inArray, sql, SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   classAssignments,
@@ -104,4 +104,93 @@ export function visibilityCondition(user: CurrentUser): SQL {
 
   // 其他所有登录用户（含学生）：公开 + 自己持有的职务群体 + 指定给自己的专人建议
   return sql`(${publicCond} OR ${groupCond} OR ${personCond})`;
+}
+
+/** 单条建议的最小行（互动权限判定用） */
+export interface SuggestionCoreRow {
+  id: number;
+  classId: number;
+  submitterId: number;
+  visibility: string;
+  targetTitleIds: number[] | null;
+  targetUserId: number | null;
+  /** 发信是否匿名（匿名评论者需复用其脱敏标识时判定） */
+  isAnonymous: boolean;
+  /** 发信的脱敏标识（匿名发信人评论时复用） */
+  anonymousLabel: string;
+}
+
+/** 按 ID 取建议核心字段（供互动接口判定权限） */
+export async function getSuggestionCore(
+  suggestionId: number
+): Promise<SuggestionCoreRow | null> {
+  const [row] = await db
+    .select({
+      id: suggestions.id,
+      classId: suggestions.classId,
+      submitterId: suggestions.submitterId,
+      visibility: suggestions.visibility,
+      targetTitleIds: suggestions.targetTitleIds,
+      targetUserId: suggestions.targetUserId,
+      isAnonymous: suggestions.isAnonymous,
+      anonymousLabel: suggestions.anonymousLabel,
+    })
+    .from(suggestions)
+    .where(eq(suggestions.id, suggestionId))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * 用户是否"可见"该建议（复用列表同款 SQL 条件）。
+ * 发信人本人始终视为可见（他写的信，尽管 person 建议不进其收件箱列表）。
+ * 注意：visibilityCondition 不含班级隔离（列表路由由班级集合过滤），
+ * 单条判定必须同时校验班级可访问性，防止跨班查看/点赞/评论。
+ */
+export async function canViewSuggestion(
+  user: CurrentUser,
+  row: SuggestionCoreRow
+): Promise<boolean> {
+  if (row.submitterId === user.id) return true;
+  if (!(await canAccessClass(user, row.classId))) return false;
+  const [hit] = await db
+    .select({ id: suggestions.id })
+    .from(suggestions)
+    .where(and(eq(suggestions.id, row.id), visibilityCondition(user)))
+    .limit(1);
+  return !!hit;
+}
+
+/**
+ * 用户是否可在该建议下评论/回复：
+ * - 公开建议：所有可见者（全班同学、接收端、超管）均可
+ * - 定向建议（group/person）：仅发信人与指定接收人（群体=目标职务在任者）
+ *   —— 超管虽可见群体建议，但不是发信人/指定人，不可评论
+ */
+export async function canCommentSuggestion(
+  user: CurrentUser,
+  row: SuggestionCoreRow
+): Promise<boolean> {
+  if (row.visibility === "public") {
+    return canViewSuggestion(user, row);
+  }
+  if (row.submitterId === user.id) return true;
+  if (row.visibility === "person") {
+    return row.targetUserId === user.id;
+  }
+  // group：本班在任目标职务持有者
+  const ids = row.targetTitleIds ?? [];
+  if (ids.length === 0) return false;
+  const [hit] = await db
+    .select({ id: classAssignments.id })
+    .from(classAssignments)
+    .where(
+      and(
+        eq(classAssignments.classId, row.classId),
+        eq(classAssignments.userId, user.id),
+        inArray(classAssignments.titleId, ids)
+      )
+    )
+    .limit(1);
+  return !!hit;
 }

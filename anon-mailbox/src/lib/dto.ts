@@ -19,6 +19,10 @@ interface SuggestionSerializable {
   createdAt: Date | string;
   processedAt: Date | string | null;
   className?: string | null;
+  /** 互动统计（由查询层用子查询注入） */
+  likeCount?: number;
+  commentCount?: number;
+  likedByMe?: boolean;
 }
 
 /** 可见性展示文案（person 定向建议只有被指定人本人能查到，故直接显示"仅你可见"） */
@@ -58,6 +62,9 @@ export function suggestionToDto(s: SuggestionSerializable) {
     // 实名建议才输出姓名；匿名建议恒为 null
     authorName: s.isAnonymous ? null : (s.authorName ?? null),
     anonymousLabel: s.anonymousLabel,
+    likeCount: s.likeCount ?? 0,
+    commentCount: s.commentCount ?? 0,
+    likedByMe: s.likedByMe ?? false,
     status: s.status,
     timeDisplay: fuzzyTime(s.createdAt),
     processed: s.status === "processed",

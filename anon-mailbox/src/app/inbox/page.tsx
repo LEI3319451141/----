@@ -9,6 +9,7 @@ import {
 } from "@/lib/client-api";
 import { TopNav } from "@/components/TopNav";
 import { PasswordModal } from "@/components/PasswordModal";
+import { CommentPanel } from "@/components/CommentPanel";
 
 interface ClassOption {
   id: number;
@@ -26,6 +27,9 @@ interface SuggestionDto {
   isAnonymous: boolean;
   authorName: string | null;
   anonymousLabel: string;
+  likeCount: number;
+  commentCount: number;
+  likedByMe: boolean;
   status: string;
   timeDisplay: string;
   processed: boolean;
@@ -59,6 +63,8 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [pendingTotal, setPendingTotal] = useState(0);
+  // 当前展开评论面板的建议 ID（同屏只展开一个）
+  const [openComments, setOpenComments] = useState<number | null>(null);
 
   const loadPage = useCallback(
     async (p: number, replace: boolean) => {
@@ -151,6 +157,30 @@ export default function InboxPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "操作失败");
     }
+  }
+
+  async function toggleLike(s: SuggestionDto) {
+    try {
+      const res = await apiFetch<{ liked: boolean; likeCount: number }>(
+        `/api/suggestions/${s.id}/like`,
+        { method: "POST" }
+      );
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === s.id
+            ? { ...it, likedByMe: res.liked, likeCount: res.likeCount }
+            : it
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "点赞失败");
+    }
+  }
+
+  function updateCommentCount(id: number, count: number) {
+    setItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, commentCount: count } : it))
+    );
   }
 
   const hasMore = items.length < total;
@@ -297,21 +327,57 @@ export default function InboxPage() {
                 {s.content}
               </p>
               <div className="flex items-center justify-between mt-4 pt-4 border-t border-black/5">
-                <span className="text-xs text-[var(--color-ink-2)]">
-                  {s.timeDisplay}
-                  {s.processed && s.processedTimeDisplay
-                    ? ` · 处理于${s.processedTimeDisplay}`
-                    : ""}
-                </span>
-                {isStaff && (
+                <div className="flex items-center gap-4">
                   <button
-                    className={`btn btn-sm ${s.processed ? "btn-ghost" : "btn-primary"}`}
-                    onClick={() => toggleStatus(s)}
+                    className={`text-sm flex items-center gap-1.5 transition-colors ${
+                      s.likedByMe
+                        ? "text-[var(--color-accent)] font-medium"
+                        : "text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
+                    }`}
+                    onClick={() => toggleLike(s)}
                   >
-                    {s.processed ? "标记为待处理" : "标记已处理"}
+                    <span>{s.likedByMe ? "👍" : "👍🏻"}</span>
+                    <span>{s.likeCount > 0 ? s.likeCount : "赞"}</span>
                   </button>
-                )}
+                  <button
+                    className={`text-sm flex items-center gap-1.5 transition-colors ${
+                      openComments === s.id
+                        ? "text-[var(--color-accent)] font-medium"
+                        : "text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
+                    }`}
+                    onClick={() =>
+                      setOpenComments(openComments === s.id ? null : s.id)
+                    }
+                  >
+                    <span>💬</span>
+                    <span>
+                      {s.commentCount > 0 ? s.commentCount : "评论"}
+                    </span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-[var(--color-ink-2)]">
+                    {s.timeDisplay}
+                    {s.processed && s.processedTimeDisplay
+                      ? ` · 处理于${s.processedTimeDisplay}`
+                      : ""}
+                  </span>
+                  {isStaff && (
+                    <button
+                      className={`btn btn-sm ${s.processed ? "btn-ghost" : "btn-primary"}`}
+                      onClick={() => toggleStatus(s)}
+                    >
+                      {s.processed ? "标记为待处理" : "标记已处理"}
+                    </button>
+                  )}
+                </div>
               </div>
+              {openComments === s.id && (
+                <CommentPanel
+                  suggestionId={s.id}
+                  onCountChange={(n) => updateCommentCount(s.id, n)}
+                />
+              )}
             </div>
           ))}
 

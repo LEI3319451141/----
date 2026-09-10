@@ -17,6 +17,7 @@ import {
   visibilityCondition,
 } from "@/lib/rbac";
 import { suggestionToDto } from "@/lib/dto";
+import { interactionSelectFields } from "@/lib/interactions";
 import { requireUser } from "@/lib/guard";
 import type { CurrentUser } from "@/lib/auth";
 
@@ -99,6 +100,7 @@ export async function GET(req: Request) {
       status: suggestions.status,
       createdAt: suggestions.createdAt,
       processedAt: suggestions.processedAt,
+      ...interactionSelectFields(user.id),
     })
     .from(suggestions)
     .leftJoin(classes, eq(classes.id, suggestions.classId))

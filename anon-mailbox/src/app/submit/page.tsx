@@ -10,6 +10,7 @@ import {
 } from "@/lib/client-api";
 import { TopNav } from "@/components/TopNav";
 import { PasswordModal } from "@/components/PasswordModal";
+import { CommentPanel } from "@/components/CommentPanel";
 
 type Visibility = "public" | "group" | "person";
 
@@ -42,6 +43,9 @@ interface MySuggestion {
   status: string;
   timeDisplay: string;
   isAnonymous: boolean;
+  likeCount: number;
+  commentCount: number;
+  likedByMe: boolean;
 }
 
 export default function SubmitPage() {
@@ -67,6 +71,7 @@ export default function SubmitPage() {
   } | null>(null);
 
   const [history, setHistory] = useState<MySuggestion[]>([]);
+  const [openComments, setOpenComments] = useState<number | null>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -122,8 +127,26 @@ export default function SubmitPage() {
 
   function toggleTitle(id: number) {
     setTargetTitleIds((prev) =>
-      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+  }
+
+  async function toggleHistoryLike(s: MySuggestion) {
+    try {
+      const res = await apiFetch<{ liked: boolean; likeCount: number }>(
+        `/api/suggestions/${s.id}/like`,
+        { method: "POST" }
+      );
+      setHistory((prev) =>
+        prev.map((it) =>
+          it.id === s.id
+            ? { ...it, likedByMe: res.liked, likeCount: res.likeCount }
+            : it
+        )
+      );
+    } catch {
+      // 静默失败：点赞不阻塞主流程
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -448,6 +471,44 @@ export default function SubmitPage() {
                   <p className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--color-ink)]">
                     {s.content}
                   </p>
+                  <div className="flex items-center gap-4 mt-3">
+                    <button
+                      className={`text-sm flex items-center gap-1.5 transition-colors ${
+                        s.likedByMe
+                          ? "text-[var(--color-accent)] font-medium"
+                          : "text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
+                      }`}
+                      onClick={() => toggleHistoryLike(s)}
+                    >
+                      <span>{s.likedByMe ? "👍" : "👍🏻"}</span>
+                      <span>{s.likeCount > 0 ? s.likeCount : "赞"}</span>
+                    </button>
+                    <button
+                      className={`text-sm flex items-center gap-1.5 transition-colors ${
+                        openComments === s.id
+                          ? "text-[var(--color-accent)] font-medium"
+                          : "text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
+                      }`}
+                      onClick={() =>
+                        setOpenComments(openComments === s.id ? null : s.id)
+                      }
+                    >
+                      <span>💬</span>
+                      <span>{s.commentCount > 0 ? s.commentCount : "评论"}</span>
+                    </button>
+                  </div>
+                  {openComments === s.id && (
+                    <CommentPanel
+                      suggestionId={s.id}
+                      onCountChange={(n) =>
+                        setHistory((prev) =>
+                          prev.map((it) =>
+                            it.id === s.id ? { ...it, commentCount: n } : it
+                          )
+                        )
+                      }
+                    />
+                  )}
                 </div>
               ))}
             </div>

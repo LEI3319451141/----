@@ -10,6 +10,7 @@ import {
   jsonb,
   uniqueIndex,
   index,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 // ---------- 枚举 ----------
@@ -185,6 +186,52 @@ export const suggestions = pgTable(
   (t) => [
     index("suggestions_class_created_idx").on(t.classId, t.createdAt),
     index("suggestions_class_status_idx").on(t.classId, t.status),
+  ]
+);
+
+// ---------- 建议点赞（一人一赞，可取消） ----------
+export const suggestionLikes = pgTable(
+  "suggestion_likes",
+  {
+    id: serial("id").primaryKey(),
+    suggestionId: integer("suggestion_id")
+      .notNull()
+      .references(() => suggestions.id, { onDelete: "cascade" }),
+    // 保密关联：仅权限判定与防重复点赞用，绝不进入响应
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("suggestion_likes_uq").on(t.suggestionId, t.userId)]
+);
+
+// ---------- 建议评论（支持一层回复展示，parentId 指向被回复的评论） ----------
+export const suggestionComments = pgTable(
+  "suggestion_comments",
+  {
+    id: serial("id").primaryKey(),
+    suggestionId: integer("suggestion_id")
+      .notNull()
+      .references(() => suggestions.id, { onDelete: "cascade" }),
+    // 保密关联：仅权限判定与匿名标签复用用，绝不直接输出
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // 被回复的评论 ID；null=顶层评论
+    parentId: integer("parent_id").references((): AnyPgColumn => suggestionComments.id, {
+      onDelete: "cascade",
+    }),
+    content: varchar("content", { length: 500 }).notNull(),
+    // 是否匿名：false 时接收端显示评论者真实姓名
+    isAnonymous: boolean("is_anonymous").notNull().default(true),
+    // 匿名标识；发信人匿名评论时复用建议的 anonymousLabel，保证同人同标
+    anonymousLabel: varchar("anonymous_label", { length: 32 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("suggestion_comments_suggestion_idx").on(t.suggestionId, t.createdAt),
   ]
 );
 
