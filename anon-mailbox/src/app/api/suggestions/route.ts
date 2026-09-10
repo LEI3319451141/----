@@ -18,6 +18,7 @@ import {
 } from "@/lib/rbac";
 import { suggestionToDto } from "@/lib/dto";
 import { interactionSelectFields } from "@/lib/interactions";
+import { getAnonymousQuota } from "@/lib/quota";
 import { requireUser } from "@/lib/guard";
 import type { CurrentUser } from "@/lib/auth";
 
@@ -274,6 +275,17 @@ export async function POST(req: Request) {
   const isAnonymous = audienceForceRealName
     ? false
     : (parsed.data.isAnonymous ?? true);
+
+  // 匿名建议受每周 7 次配额限制（自然周，按北京时间周一重置；强制实名不占用）
+  if (isAnonymous) {
+    const quota = await getAnonymousQuota(user.id);
+    if (quota.remaining <= 0) {
+      return fail(
+        429,
+        `本周匿名建议次数已用完（每周 ${quota.limit} 次，周一 0 点重置），请改用实名提交`
+      );
+    }
+  }
 
   const [created] = await db
     .insert(suggestions)

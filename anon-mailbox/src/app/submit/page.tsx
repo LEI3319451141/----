@@ -14,6 +14,13 @@ import { CommentPanel } from "@/components/CommentPanel";
 
 type Visibility = "public" | "group" | "person";
 
+interface AnonymousQuota {
+  limit: number;
+  used: number;
+  remaining: number;
+  resetAt: string;
+}
+
 interface Meta {
   myClass: { id: number; name: string };
   groupOptions: {
@@ -23,6 +30,7 @@ interface Meta {
     forceRealName?: boolean;
   }[];
   categories: { id: number; name: string }[];
+  anonymousQuota: AnonymousQuota;
 }
 
 interface StaffMember {
@@ -126,6 +134,28 @@ export default function SubmitPage() {
         : false;
   const effectiveAnonymous = forceRealName ? false : isAnonymous;
 
+  // 本周匿名配额（无 meta 时给一个宽松占位，不影响渲染；以后端校验为准）
+  const quota = meta?.anonymousQuota ?? {
+    limit: 7,
+    used: 0,
+    remaining: 7,
+    resetAt: "",
+  };
+  const anonymousExhausted = quota.remaining <= 0;
+  const quotaResetText = quota.resetAt
+    ? new Date(quota.resetAt).toLocaleDateString("zh-CN", {
+        month: "long",
+        day: "numeric",
+      })
+    : "下周一";
+
+  // 配额用尽且当前未被强制实名时，自动切到实名，避免提交后才被后端拒绝
+  useEffect(() => {
+    if (anonymousExhausted && !forceRealName && isAnonymous) {
+      setIsAnonymous(false);
+    }
+  }, [anonymousExhausted, forceRealName, isAnonymous]);
+
   function toggleTitle(id: number) {
     setTargetTitleIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -161,6 +191,15 @@ export default function SubmitPage() {
       await apiFetch(`/api/suggestions/${s.id}`, { method: "DELETE" });
       setHistory((prev) => prev.filter((it) => it.id !== s.id));
       if (openComments === s.id) setOpenComments(null);
+      // 匿名建议删除后返还本周配额，重新拉取
+      if (s.isAnonymous) {
+        try {
+          const m = await apiFetch<Meta>("/api/student/meta");
+          setMeta(m);
+        } catch {
+          /* 配额刷新失败不阻塞删除结果 */
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
     }
@@ -179,6 +218,10 @@ export default function SubmitPage() {
     }
     if (visibility === "person" && !targetUserId) {
       setError("请选择指定接收人");
+      return;
+    }
+    if (effectiveAnonymous && anonymousExhausted) {
+      setError("本周匿名建议次数已用完，请改用实名提交");
       return;
     }
     setSubmitting(true);
@@ -202,6 +245,21 @@ export default function SubmitPage() {
         anonymousLabel: res.anonymousLabel,
         isAnonymous: res.isAnonymous,
       });
+      if (res.isAnonymous) {
+        // 本地扣减本周匿名配额
+        setMeta((prev) =>
+          prev
+            ? {
+                ...prev,
+                anonymousQuota: {
+                  ...prev.anonymousQuota,
+                  used: prev.anonymousQuota.used + 1,
+                  remaining: Math.max(0, prev.anonymousQuota.remaining - 1),
+                },
+              }
+            : prev
+        );
+      }
       setContent("");
       setTargetTitleIds([]);
       setTargetUserId(null);
@@ -374,12 +432,26 @@ export default function SubmitPage() {
 
               {/* 署名方式 */}
               <div>
-                <label className="label">署名方式</label>
+                <label className="label">
+                  署名方式
+                  {!forceRealName && (
+                    <span
+                      className={`ml-2 font-normal ${
+                        anonymousExhausted
+                          ? "text-[var(--color-danger)]"
+                          : "text-[var(--color-ink-2)]"
+                      }`}
+                    >
+                      本周匿名机会剩余 {quota.remaining}/{quota.limit} 次
+                      （{quotaResetText} 0 点重置）
+                    </span>
+                  )}
+                </label>
                 <div className="segmented">
                   <button
                     type="button"
                     className={effectiveAnonymous ? "active" : ""}
-                    disabled={forceRealName}
+                    disabled={forceRealName || anonymousExhausted}
                     onClick={() => setIsAnonymous(true)}
                   >
                     匿名提交
@@ -396,9 +468,15 @@ export default function SubmitPage() {
                   <p className="text-xs text-[var(--color-warning)] mt-2">
                     致辅导员谢智的信件按要求需实名呈现，接收端将显示你的真实姓名，不可匿名。
                   </p>
+                ) : anonymousExhausted ? (
+                  <p className="text-xs text-[var(--color-danger)] mt-2">
+                    本周 {quota.limit} 次匿名建议机会已用完，{quotaResetText} 0 点自动重置；
+                    现在可改用实名提交（不占用匿名次数）。
+                  </p>
                 ) : effectiveAnonymous ? (
                   <p className="text-xs text-[var(--color-ink-2)] mt-2">
                     匿名提交：接收端只会看到「同学X」这类随机脱敏标识，无法追溯到你本人。
+                    每账号每周仅 {quota.limit} 次匿名机会。
                   </p>
                 ) : (
                   <p className="text-xs text-[var(--color-ink-2)] mt-2">

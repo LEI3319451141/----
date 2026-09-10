@@ -9,6 +9,7 @@ import {
 } from "@/db/schema";
 import { fail, ok } from "@/lib/api";
 import { getStudentClassId } from "@/lib/rbac";
+import { getAnonymousQuota } from "@/lib/quota";
 import { requireUser } from "@/lib/guard";
 
 export const runtime = "nodejs";
@@ -82,5 +83,6 @@ export async function GET() {
     myClass: cls ?? { id: classId, name: "未知班级" },
     groupOptions,
     categories,
+    anonymousQuota: await getAnonymousQuota(user.id),
   });
 }
