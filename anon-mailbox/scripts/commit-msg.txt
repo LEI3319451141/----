@@ -1,8 +1,0 @@
-feat: PWA 支持——可安装到手机主屏幕 + 代码更新自动推送
-
-- Web App Manifest: standalone 模式、蓝色主题
-- 应用图标: SVG + 192/512 PNG + Apple touch icon + favicon
-- Service Worker: 静态资源缓存优先、页面网络优先、离线回退页
-- 自动更新: 新 SW 接管后客户端弹"应用已更新"横幅
-- layout.tsx 加 PWA meta 标签
-- /offline 离线回退页
