@@ -1,4 +1,5 @@
 import { and, eq, inArray, sql, SQL } from "drizzle-orm";
+import { cache } from "react";
 import { db } from "@/db";
 import {
   classAssignments,
@@ -27,17 +28,16 @@ export function isStaffRole(role: string): boolean {
   );
 }
 
-/**
- * 返回用户可查看建议的班级 ID 集合。
+/** 返回用户可查看建议的班级 ID 集合。
  * - super_admin：返回 "all"（全局可见）
  * - 职务持有者（辅导员/教师/班干部）：取 class_assignments 授权记录
  * - 学生：取自己所在班级（公开建议全班可见）
  * 这是所有建议查询的强制过滤条件，防止越权（IDOR）。
- */
-export async function getAccessibleClassIds(
+ * 用 React cache() 做请求级缓存，同一请求内多次调用只查一次。 */
+export const getAccessibleClassIds = cache(async (
   userId: number,
   role: string
-): Promise<number[] | "all"> {
+): Promise<number[] | "all"> => {
   if (role === "super_admin") return "all";
 
   // 职务持有者：从授权表取（班干部是学生兼任，也走这条，与其学籍班级一致）
@@ -52,17 +52,17 @@ export async function getAccessibleClassIds(
   // 普通学生：只能看自己所在班级
   const studentClassId = await getStudentClassId(userId);
   return studentClassId ? [studentClassId] : [];
-}
+});
 
-/** 学生（及有学籍的班干部）所在班级 ID */
-export async function getStudentClassId(userId: number): Promise<number | null> {
+/** 学生（及有学籍的班干部）所在班级 ID（请求级缓存） */
+export const getStudentClassId = cache(async (userId: number): Promise<number | null> => {
   const [row] = await db
     .select({ classId: studentEnrollments.classId })
     .from(studentEnrollments)
     .where(eq(studentEnrollments.userId, userId))
     .limit(1);
   return row?.classId ?? null;
-}
+});
 
 /** 校验用户是否有权访问某个班级的建议 */
 export async function canAccessClass(
@@ -146,19 +146,35 @@ export async function getSuggestionCore(
  * 发信人本人始终视为可见（他写的信，尽管 person 建议不进其收件箱列表）。
  * 注意：visibilityCondition 不含班级隔离（列表路由由班级集合过滤），
  * 单条判定必须同时校验班级可访问性，防止跨班查看/点赞/评论。
- */
+ * 优化：public/person 可直接在内存判定，仅 group 需查数据库。 */
 export async function canViewSuggestion(
   user: CurrentUser,
   row: SuggestionCoreRow
 ): Promise<boolean> {
   if (row.submitterId === user.id) return true;
   if (!(await canAccessClass(user, row.classId))) return false;
-  const [hit] = await db
-    .select({ id: suggestions.id })
-    .from(suggestions)
-    .where(and(eq(suggestions.id, row.id), visibilityCondition(user)))
-    .limit(1);
-  return !!hit;
+  // public：全班可见
+  if (row.visibility === "public") return true;
+  // person：仅指定本人
+  if (row.visibility === "person") return row.targetUserId === user.id;
+  // group：本班在任目标职务持有者
+  if (row.visibility === "group") {
+    const ids = row.targetTitleIds ?? [];
+    if (ids.length === 0) return false;
+    const [hit] = await db
+      .select({ id: classAssignments.id })
+      .from(classAssignments)
+      .where(
+        and(
+          eq(classAssignments.classId, row.classId),
+          eq(classAssignments.userId, user.id),
+          inArray(classAssignments.titleId, ids)
+        )
+      )
+      .limit(1);
+    return !!hit;
+  }
+  return false;
 }
 
 /**

@@ -10,7 +10,7 @@ import {
   users,
 } from "@/db/schema";
 import { fail, ok } from "@/lib/api";
-import { randomAnonymousLabel } from "@/lib/label";
+import { randomAnonymousLabel } from "@/lib/anonymous-label";
 import {
   getAccessibleClassIds,
   getStudentClassId,
@@ -19,6 +19,7 @@ import {
 import { suggestionToDto } from "@/lib/dto";
 import { interactionSelectFields } from "@/lib/interactions";
 import { getAnonymousQuota } from "@/lib/quota";
+import { suggestionRateLimit } from "@/lib/rate-limit";
 import { requireUser } from "@/lib/guard";
 import type { CurrentUser } from "@/lib/auth";
 
@@ -174,6 +175,12 @@ export async function POST(req: Request) {
   const ownClassId = await getStudentClassId(user.id);
   if (!ownClassId) {
     return fail(403, "您尚未归属任何班级，无法提交建议");
+  }
+
+  // 限流：每用户每 5 分钟最多 5 条建议
+  const rl = suggestionRateLimit(user.id);
+  if (!rl.allowed) {
+    return fail(429, `提交过快，请 ${rl.retryAfter} 秒后再试`);
   }
 
   const body = await req.json().catch(() => null);

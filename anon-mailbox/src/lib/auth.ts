@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -62,8 +63,9 @@ async function getTokenFromRequest(): Promise<string | null> {
 
 export type CurrentUser = typeof users.$inferSelect;
 
-/** 从请求（Bearer token 或 cookie）解析当前登录用户，无效/停用返回 null */
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+/** 从请求（Bearer token 或 cookie）解析当前登录用户，无效/停用返回 null。
+ *  用 React cache() 做请求级缓存：同一 HTTP 请求内多次调用只查一次数据库。 */
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const token = await getTokenFromRequest();
   if (!token) return null;
   const payload = await verifyToken(token);
@@ -75,4 +77,4 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     .limit(1);
   if (!user || user.status !== "active") return null;
   return user;
-}
+});

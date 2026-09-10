@@ -81,13 +81,18 @@ export default function SubmitPage() {
 
   const [history, setHistory] = useState<MySuggestion[]>([]);
   const [openComments, setOpenComments] = useState<number | null>(null);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPageSize = 20;
 
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (page: number = 1, append: boolean = false) => {
     try {
-      const res = await apiFetch<{ items: MySuggestion[] }>(
-        "/api/my/suggestions"
+      const res = await apiFetch<{ items: MySuggestion[]; total: number }>(
+        `/api/my/suggestions?page=${page}`
       );
-      setHistory(res.items ?? []);
+      setHistory((prev) => (append ? [...prev, ...(res.items ?? [])] : res.items ?? []));
+      setHistoryTotal(res.total ?? 0);
+      setHistoryPage(page);
     } catch {
       /* 忽略历史加载失败 */
     }
@@ -264,7 +269,7 @@ export default function SubmitPage() {
       setTargetTitleIds([]);
       setTargetUserId(null);
       setIsAnonymous(true);
-      loadHistory();
+      loadHistory(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交失败");
     } finally {
@@ -616,6 +621,16 @@ export default function SubmitPage() {
                 </div>
               ))}
             </div>
+            {history.length < historyTotal && (
+              <div className="text-center mt-4">
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => loadHistory(historyPage + 1, true)}
+                >
+                  加载更多（剩余 {historyTotal - history.length} 条）
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>

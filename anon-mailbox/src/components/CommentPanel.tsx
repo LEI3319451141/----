@@ -99,9 +99,22 @@ export function CommentPanel({ suggestionId, onCountChange }: CommentPanelProps)
   }
 
   async function removeComment(c: CommentItem) {
-    const hasReplies = items.some((i) => i.parentId === c.id);
-    const tip = hasReplies
-      ? `删除该评论？其下 ${items.filter((i) => i.parentId === c.id).length} 条回复也将一并删除，不可恢复。`
+    // 递归统计所有后代回复（不只直接子评论）
+    const byParent = new Map<number, CommentItem[]>();
+    for (const i of items) {
+      if (i.parentId) {
+        const arr = byParent.get(i.parentId) ?? [];
+        arr.push(i);
+        byParent.set(i.parentId, arr);
+      }
+    }
+    function countDescendants(id: number): number {
+      const children = byParent.get(id) ?? [];
+      return children.length + children.reduce((sum, c) => sum + countDescendants(c.id), 0);
+    }
+    const replyCount = countDescendants(c.id);
+    const tip = replyCount > 0
+      ? `删除该评论？其下 ${replyCount} 条回复也将一并删除，不可恢复。`
       : "确定删除这条评论？删除后不可恢复。";
     if (!window.confirm(tip)) return;
     setError("");

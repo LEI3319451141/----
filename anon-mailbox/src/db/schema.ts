@@ -186,6 +186,7 @@ export const suggestions = pgTable(
   (t) => [
     index("suggestions_class_created_idx").on(t.classId, t.createdAt),
     index("suggestions_class_status_idx").on(t.classId, t.status),
+    index("suggestions_submitter_idx").on(t.submitterId, t.createdAt),
   ]
 );
 

@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   classes,
@@ -14,11 +14,21 @@ import { requireUser } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
-/** 学生查看本人的历史提交（仅自己的，看不到任何人的内容） */
-export async function GET() {
+/** 学生查看本人的历史提交（仅自己的，看不到任何人的内容）
+ *  支持分页：page 参数，默认 1，每页 20 条 */
+export async function GET(req: Request) {
   const guard = await requireUser();
   if ("response" in guard) return guard.response;
   const user = guard.user;
+
+  const url = new URL(req.url);
+  const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1);
+  const pageSize = 20;
+
+  const [totalRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(suggestions)
+    .where(eq(suggestions.submitterId, user.id));
 
   const rows = await db
     .select({
@@ -44,9 +54,10 @@ export async function GET() {
     .leftJoin(suggestionCategories, eq(suggestionCategories.id, suggestions.categoryId))
     .where(eq(suggestions.submitterId, user.id))
     .orderBy(desc(suggestions.createdAt))
-    .limit(100);
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
 
-  if (rows.length === 0) return ok({ items: [] });
+  if (rows.length === 0) return ok({ items: [], total: 0, page, pageSize });
 
   const titleIds = Array.from(
     new Set(rows.flatMap((r) => r.targetTitleIds ?? []))
@@ -67,5 +78,8 @@ export async function GET() {
         targetTitleNames: (r.targetTitleIds ?? []).map((id) => titleMap.get(id) ?? ""),
       })
     ),
+    total: totalRow?.count ?? 0,
+    page,
+    pageSize,
   });
 }

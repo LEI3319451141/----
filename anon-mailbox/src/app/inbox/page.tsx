@@ -71,6 +71,8 @@ export default function InboxPage() {
     async (p: number, replace: boolean) => {
       setLoading(true);
       setError("");
+      // 切换筛选条件时先清空，避免旧数据闪烁
+      if (replace) setItems([]);
       try {
         const params = new URLSearchParams();
         if (classId !== "") params.set("classId", String(classId));
@@ -313,7 +315,35 @@ export default function InboxPage() {
 
         {/* 建议列表 */}
         <div className="space-y-4">
-          {items.map((s) => (
+          {loading && items.length === 0 ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="card p-6 animate-pulse"
+                  style={{ minHeight: 120 }}
+                >
+                  <div
+                    className="h-4 bg-black/5 rounded mb-3"
+                    style={{ width: "40%" }}
+                  />
+                  <div
+                    className="h-3 bg-black/5 rounded mb-2"
+                    style={{ width: "80%" }}
+                  />
+                  <div
+                    className="h-3 bg-black/5 rounded"
+                    style={{ width: "60%" }}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : items.length === 0 && !error ? (
+            <div className="card p-8 text-center text-[var(--color-ink-2)]">
+              暂无建议
+            </div>
+          ) : (
+            items.map((s) => (
             <div key={s.id} className="card p-6 fade-in">
               <div className="flex items-center gap-2 flex-wrap mb-3">
                 {s.isAnonymous ? (
@@ -411,13 +441,7 @@ export default function InboxPage() {
                 />
               )}
             </div>
-          ))}
-
-          {!loading && items.length === 0 && (
-            <div className="card p-12 text-center text-[var(--color-ink-2)]">
-              <div className="text-4xl mb-3">📭</div>
-              暂时没有符合条件的建议
-            </div>
+          ))
           )}
         </div>
 

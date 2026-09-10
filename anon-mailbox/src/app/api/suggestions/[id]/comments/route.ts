@@ -3,7 +3,8 @@ import { z } from "zod";
 import { db } from "@/db";
 import { suggestionComments, suggestions, users } from "@/db/schema";
 import { fail, ok } from "@/lib/api";
-import { randomAnonymousLabel } from "@/lib/label";
+import { randomAnonymousLabel } from "@/lib/anonymous-label";
+import { commentRateLimit } from "@/lib/rate-limit";
 import {
   canCommentSuggestion,
   canViewSuggestion,
@@ -122,6 +123,12 @@ export async function POST(
     return fail(404, "建议不存在或无权操作");
   }
 
+  // 限流：每用户每 60 秒最多 10 条评论
+  const rl = commentRateLimit(user.id);
+  if (!rl.allowed) {
+    return fail(429, `评论过快，请 ${rl.retryAfter} 秒后再试`);
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
@@ -151,28 +158,18 @@ export async function POST(
   if (isAnonymous && suggestion.isAnonymous && user.id === suggestion.submitterId) {
     anonymousLabel = suggestion.anonymousLabel;
   } else if (isAnonymous) {
-    const [prior] = await db
-      .select({ label: suggestionComments.anonymousLabel })
+    // 一次查询同时取：本人已有标识 + 全部已用标识（避免两次查同一张表）
+    const labelRows = await db
+      .select({
+        label: suggestionComments.anonymousLabel,
+        userId: suggestionComments.userId,
+      })
       .from(suggestionComments)
-      .where(
-        and(
-          eq(suggestionComments.suggestionId, suggestionId),
-          eq(suggestionComments.userId, user.id),
-          eq(suggestionComments.isAnonymous, true)
-        )
-      )
-      .limit(1);
-    if (prior) {
-      anonymousLabel = prior.label;
-    } else {
-      const usedRows = await db
-        .selectDistinct({ label: suggestionComments.anonymousLabel })
-        .from(suggestionComments)
-        .where(eq(suggestionComments.suggestionId, suggestionId));
-      const used = new Set(usedRows.map((r) => r.label));
-      if (suggestion.isAnonymous) used.add(suggestion.anonymousLabel);
-      anonymousLabel = randomAnonymousLabel(used);
-    }
+      .where(eq(suggestionComments.suggestionId, suggestionId));
+    const used = new Set(labelRows.map((r) => r.label));
+    if (suggestion.isAnonymous) used.add(suggestion.anonymousLabel);
+    const prior = labelRows.find((r) => r.userId === user.id);
+    anonymousLabel = prior?.label ?? randomAnonymousLabel(used);
   } else {
     anonymousLabel = randomAnonymousLabel();
   }
