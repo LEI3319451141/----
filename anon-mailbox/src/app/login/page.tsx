@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { apiFetch, homePathForRole } from "@/lib/client-api";
 
 interface LoginResponse {
@@ -16,7 +15,6 @@ interface LoginResponse {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -46,7 +44,8 @@ export default function LoginPage() {
         return;
       }
       if (res.user) {
-        router.replace(homePathForRole(res.user.role));
+        window.location.href = homePathForRole(res.user.role);
+        return;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败");
@@ -73,7 +72,8 @@ export default function LoginPage() {
         body: JSON.stringify({ loginId: setupLoginId, password: newPwd }),
       });
       if (res.user) {
-        router.replace(homePathForRole(res.user.role));
+        window.location.href = homePathForRole(res.user.role);
+        return;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "设置失败");
