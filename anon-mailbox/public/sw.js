@@ -7,8 +7,8 @@
  * - 自动更新：新 SW 接管时立即激活（skipWaiting），客户端检测到控制权变化后提示刷新
  */
 
-const CACHE_NAME = "mb-shell-v1";
-const STATIC_CACHE = "mb-static-v1";
+const CACHE_NAME = "mb-shell-v2";
+const STATIC_CACHE = "mb-static-v2";
 
 const STATIC_ASSETS = ["/login", "/offline", "/manifest.webmanifest"];
 
