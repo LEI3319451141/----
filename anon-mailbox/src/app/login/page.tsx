@@ -159,6 +159,9 @@ export default function LoginPage() {
           <p className="text-sm text-[var(--color-ink-2)] mt-2">
             身份保密，畅所欲言。请使用账号登录。
           </p>
+          <p className="text-[11px] text-black/30 mt-3">
+            Created by XHU@ZHR withi Engineering Management,Class3
+          </p>
         </div>
         <form onSubmit={submit} className="space-y-4">
           <div>
