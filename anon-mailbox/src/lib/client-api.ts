@@ -1,17 +1,47 @@
-/** 前端 API 调用封装（cookie 鉴权，同源请求） */
+/** 前端 API 调用封装（localStorage Token + Cookie 双通道鉴权） */
+
+const TOKEN_KEY = "mb_token";
+
+/** 登录成功后保存 token（Bearer 通道，移动端比 cookie 更可靠） */
+export function setAuthToken(token: string) {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    /* 隐私模式等场景忽略，仍有 cookie 通道兜底 */
+  }
+}
+
+export function clearAuthToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export async function apiFetch<T = unknown>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
+  const token = getAuthToken();
   const res = await fetch(path, {
     credentials: "same-origin",
+    ...options,
     headers: {
       ...(options?.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers ?? {}),
     },
-    ...options,
   });
+  if (res.status === 401) clearAuthToken();
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(

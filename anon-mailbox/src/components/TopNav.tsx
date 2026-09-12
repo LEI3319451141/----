@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { apiFetch, type MeUser } from "@/lib/client-api";
+import { apiFetch, clearAuthToken, type MeUser } from "@/lib/client-api";
 
 export function TopNav({
   user,
@@ -14,6 +14,7 @@ export function TopNav({
 
   async function logout() {
     await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    clearAuthToken();
     router.replace("/login");
   }
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   apiFetch,
   fetchMe,
+  getAuthToken,
   type MeResponse,
   type StaffTitle,
 } from "@/lib/client-api";
@@ -406,10 +407,12 @@ function ClassPanel({
     try {
       const fd = new FormData();
       fd.append("file", file);
+      const token = getAuthToken();
       const res = await fetch(`/api/admin/classes/${classId}/imports`, {
         method: "POST",
         body: fd,
         credentials: "same-origin",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "导入失败");
