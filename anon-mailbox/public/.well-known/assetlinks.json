@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "site.advicebox.app",
+    "sha256_cert_fingerprints": [
+      "05:E6:4B:43:4B:83:AA:6D:5C:9A:16:5F:E8:C0:2C:63:F8:91:FC:88:43:44:2B:61:6C:E7:7D:B8:EF:D3:7A:5B"
+    ]
+  }
+}]
