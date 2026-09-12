@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { apiFetch, homePathForRole } from "@/lib/client-api";
+import { apiFetch, homePathForRole, MeResponse } from "@/lib/client-api";
 
 interface LoginResponse {
   needsPasswordSetup?: boolean;
@@ -44,7 +44,20 @@ export default function LoginPage() {
         return;
       }
       if (res.user) {
-        window.location.href = homePathForRole(res.user.role);
+        // 验证 cookie 已生效再跳转（部分移动端浏览器 cookie 写入有延迟）
+        const home = homePathForRole(res.user.role);
+        for (let i = 0; i < 3; i++) {
+          const me = await apiFetch<MeResponse>("/api/auth/me").catch(
+            () => null
+          );
+          if (me?.user) {
+            window.location.href = home;
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        // 三次验证仍失败则直接跳转（由目标页自行判断）
+        window.location.href = home;
         return;
       }
     } catch (err) {
