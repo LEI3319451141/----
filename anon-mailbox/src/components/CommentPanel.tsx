@@ -150,12 +150,12 @@ export function CommentPanel({ suggestionId, onCountChange }: CommentPanelProps)
               回复 @{c.replyToLabel}
             </span>
           )}
-          <span className="text-xs text-[var(--color-ink-2)] ml-auto">
+          <span className="text-xs text-[var(--color-ink-2)] ml-auto whitespace-nowrap">
             {c.timeDisplay}
           </span>
           <button
             type="button"
-            className="text-xs text-[var(--color-accent)] hover:underline"
+            className="text-xs whitespace-nowrap text-[var(--color-accent)] hover:underline"
             onClick={() => setReplyTo(c)}
           >
             回复
@@ -163,7 +163,7 @@ export function CommentPanel({ suggestionId, onCountChange }: CommentPanelProps)
           {c.canDelete && (
             <button
               type="button"
-              className="text-xs text-[var(--color-danger)] hover:underline"
+              className="text-xs whitespace-nowrap text-[var(--color-danger)] hover:underline"
               onClick={() => removeComment(c)}
             >
               删除

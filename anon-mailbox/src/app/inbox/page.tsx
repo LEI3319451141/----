@@ -379,10 +379,10 @@ export default function InboxPage() {
               <p className="text-[15px] leading-7 whitespace-pre-wrap">
                 {s.content}
               </p>
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-black/5">
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-2 mt-4 pt-4 border-t border-black/5">
                 <div className="flex items-center gap-4">
                   <button
-                    className={`text-sm flex items-center gap-1.5 transition-colors ${
+                    className={`text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors ${
                       s.likedByMe
                         ? "text-[var(--color-accent)] font-medium"
                         : "text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
@@ -393,7 +393,7 @@ export default function InboxPage() {
                     <span>{s.likeCount > 0 ? s.likeCount : "赞"}</span>
                   </button>
                   <button
-                    className={`text-sm flex items-center gap-1.5 transition-colors ${
+                    className={`text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors ${
                       openComments === s.id
                         ? "text-[var(--color-accent)] font-medium"
                         : "text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
@@ -409,7 +409,7 @@ export default function InboxPage() {
                   </button>
                   {canDeleteSuggestion(s) && (
                     <button
-                      className="text-sm flex items-center gap-1.5 text-[var(--color-ink-2)] hover:text-[var(--color-danger)] transition-colors"
+                      className="text-sm flex items-center gap-1.5 whitespace-nowrap text-[var(--color-ink-2)] hover:text-[var(--color-danger)] transition-colors"
                       onClick={() => deleteSuggestion(s)}
                     >
                       <span>🗑</span>
@@ -417,8 +417,8 @@ export default function InboxPage() {
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-[var(--color-ink-2)]">
+                <div className="flex items-center gap-3 ml-auto flex-wrap justify-end">
+                  <span className="text-xs text-[var(--color-ink-2)] whitespace-nowrap">
                     {s.timeDisplay}
                     {s.processed && s.processedTimeDisplay
                       ? ` · 处理于${s.processedTimeDisplay}`

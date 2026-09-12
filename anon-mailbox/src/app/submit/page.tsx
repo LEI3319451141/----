@@ -564,16 +564,16 @@ export default function SubmitPage() {
                     >
                       {s.status === "processed" ? "已处理" : "待处理"}
                     </span>
-                    <span className="text-xs text-[var(--color-ink-2)] ml-auto">
+                    <span className="text-xs text-[var(--color-ink-2)] ml-auto whitespace-nowrap">
                       {s.timeDisplay}
                     </span>
                   </div>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--color-ink)]">
                     {s.content}
                   </p>
-                  <div className="flex items-center gap-4 mt-3">
+                  <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mt-3">
                     <button
-                      className={`text-sm flex items-center gap-1.5 transition-colors ${
+                      className={`text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors ${
                         s.likedByMe
                           ? "text-[var(--color-accent)] font-medium"
                           : "text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
@@ -584,7 +584,7 @@ export default function SubmitPage() {
                       <span>{s.likeCount > 0 ? s.likeCount : "赞"}</span>
                     </button>
                     <button
-                      className={`text-sm flex items-center gap-1.5 transition-colors ${
+                      className={`text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors ${
                         openComments === s.id
                           ? "text-[var(--color-accent)] font-medium"
                           : "text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
@@ -598,7 +598,7 @@ export default function SubmitPage() {
                     </button>
                     {(s.isMine || me?.user.role === "super_admin") && (
                       <button
-                        className="text-sm flex items-center gap-1.5 text-[var(--color-ink-2)] hover:text-[var(--color-danger)] transition-colors"
+                        className="text-sm flex items-center gap-1.5 whitespace-nowrap text-[var(--color-ink-2)] hover:text-[var(--color-danger)] transition-colors"
                         onClick={() => deleteHistory(s)}
                       >
                         <span>🗑</span>
